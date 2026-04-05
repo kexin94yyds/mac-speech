@@ -150,6 +150,10 @@ typedef void (*SpeechBridgeCallback)(const char *event_type, const char *text, v
     self.callback = callback;
     self.userData = userData;
 
+    // If the previous session did not fully unwind (e.g. rapid Fn cycles), reset before
+    // re-entering the async authorization chain so the next beginRecognition is clean.
+    [self resetRecognition:YES];
+
     __weak typeof(self) weakSelf = self;
     [SFSpeechRecognizer requestAuthorization:^(SFSpeechRecognizerAuthorizationStatus status) {
         dispatch_async(dispatch_get_main_queue(), ^{

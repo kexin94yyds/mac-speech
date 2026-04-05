@@ -440,6 +440,9 @@ fn start_native_speech() -> Result<(), String> {
     eprintln!("[iterate-speech] start_native_speech invoked");
     #[cfg(target_os = "macos")]
     unsafe {
+        // Always tear down any in-flight recognition before starting a new session.
+        // Otherwise a later Fn press can leave the UI stuck in "starting" with no native-started.
+        speech_bridge_stop();
         speech_bridge_start(native_speech_callback, std::ptr::null_mut());
     }
     Ok(())
