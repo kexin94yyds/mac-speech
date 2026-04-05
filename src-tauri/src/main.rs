@@ -430,22 +430,26 @@ fn request_input_monitoring_permission() -> Result<(), String> {
 fn paste_text(text: String, app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
+        let bundle_id = last_target_app_bundle_id()
+            .lock()
+            .map_err(|_| "failed to lock target app bundle id store".to_string())?
+            .clone()
+            .ok_or_else(|| {
+                "未记录写回目标：请先把光标放在要输入的窗口里，再按第一次 Fn（不要先点到 iterate-speech 主窗口再按）。".to_string()
+            })?;
+
+        eprintln!("[iterate-speech] paste_text target_bundle={bundle_id} chars={}", text.chars().count());
+
         let previous = app.clipboard().read_text().ok();
 
         app.clipboard()
             .write_text(&text)
             .map_err(|error| format!("failed to write transcript to clipboard: {error}"))?;
 
-        if let Some(bundle_id) = last_target_app_bundle_id()
-            .lock()
-            .map_err(|_| "failed to lock target app bundle id store".to_string())?
-            .clone()
-        {
-            macos::activate_app(&bundle_id)?;
-            thread::sleep(Duration::from_millis(180));
-        }
+        macos::activate_app(&bundle_id)?;
+        thread::sleep(Duration::from_millis(280));
 
-        thread::sleep(Duration::from_millis(70));
+        thread::sleep(Duration::from_millis(90));
         macos::simulate_paste()?;
 
         if let Some(previous) = previous {
