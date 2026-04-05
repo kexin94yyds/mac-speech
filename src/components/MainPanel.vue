@@ -97,6 +97,28 @@ async function requestInputMonitoring() {
   await refreshStatuses()
 }
 
+const windowHint = ref('')
+
+async function bringMainWindowForward() {
+  windowHint.value = ''
+  try {
+    await invoke('show_main_window')
+    windowHint.value = '已请求将主窗口置顶。若仍看不到，请试 Mission Control 或多桌面。'
+  } catch (error) {
+    windowHint.value = `置顶失败：${String(error)}`
+  }
+}
+
+async function revealOverlayOnly() {
+  windowHint.value = ''
+  try {
+    await invoke('reveal_overlay_window')
+    windowHint.value = '已显示底部语音浮层（未开始录音）。按 Fn 开始监听。'
+  } catch (error) {
+    windowHint.value = `浮层失败：${String(error)}`
+  }
+}
+
 onMounted(async () => {
   await refreshStatuses()
 })
@@ -137,6 +159,12 @@ onMounted(async () => {
           <p class="section-copy">{{ statusSummary }}</p>
         </div>
         <div class="quick-actions">
+          <button class="action-button accent" type="button" @click="bringMainWindowForward">
+            主窗口置顶
+          </button>
+          <button class="action-button ghost" type="button" @click="revealOverlayOnly">
+            显示底部浮层
+          </button>
           <button class="action-button" type="button" @click="requestMicrophone">
             请求麦克风权限
           </button>
@@ -150,6 +178,7 @@ onMounted(async () => {
             请求输入监控权限
           </button>
         </div>
+        <p v-if="windowHint" class="window-hint">{{ windowHint }}</p>
       </section>
 
       <section class="content-grid">
@@ -342,6 +371,18 @@ h1 {
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(92, 54, 28, 0.1);
   box-shadow: none;
+}
+
+.action-button.accent {
+  background: linear-gradient(135deg, #2a6b4a, #1d4a34);
+  box-shadow: 0 14px 28px rgba(29, 74, 52, 0.22);
+}
+
+.window-hint {
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(70, 50, 39, 0.78);
 }
 
 .content-grid {
