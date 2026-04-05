@@ -21,8 +21,8 @@ const NATIVE_ERROR_EVENT: &str = "speech://native-error";
 const OWN_BUNDLE_ID: &str = "xin.iterate.speech";
 static LAST_TARGET_APP_BUNDLE_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
-const ANCHOR_WIDTH: f64 = 420.0;
-const ANCHOR_HEIGHT: f64 = 120.0;
+const ANCHOR_WIDTH: f64 = 168.0;
+const ANCHOR_HEIGHT: f64 = 100.0;
 const ANCHOR_BOTTOM_MARGIN: f64 = 28.0;
 
 #[derive(Clone, Serialize)]

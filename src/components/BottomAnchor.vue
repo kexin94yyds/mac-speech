@@ -18,6 +18,20 @@ const hasTranscript = computed(() =>
   )
 )
 
+/** Fn 会话中只展示波浪，不铺大段说明文案 */
+const isWaveOnlySession = computed(
+  () =>
+    overlay.sessionPhase.value === 'starting' ||
+    overlay.sessionPhase.value === 'listening' ||
+    overlay.sessionPhase.value === 'stopping',
+)
+
+const showErrorCaption = computed(
+  () =>
+    overlay.sessionPhase.value === 'error' ||
+    overlay.sessionPhase.value === 'unsupported',
+)
+
 onMounted(async () => {
   await overlay.initialize()
 })
@@ -29,28 +43,29 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="shell">
-    <section class="capsule" :class="{ active: isActive }">
-      <div class="capsule-head">
-        <div
-          class="wave-anchor"
-          :class="{ active: isActive, idle: !isActive }"
-          :style="{ transform: `scale(${pulseScale})` }"
-          aria-label="speech anchor"
-        >
-          <span></span>
-          <span></span>
-          <span></span>
-          <span></span>
-          <span></span>
-        </div>
-        <p class="phase-copy">{{ overlay.phaseLabel }}</p>
+    <section class="anchor-card" :class="{ active: isActive }">
+      <div
+        class="wave-anchor"
+        :class="{ active: isActive, idle: !isActive }"
+        :style="{ transform: `scale(${pulseScale})` }"
+        aria-label="speech anchor"
+      >
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
       </div>
-
-      <p class="transcript-copy" :class="{ placeholder: !hasTranscript }">
+      <p v-if="showErrorCaption" class="err-caption">
+        {{ overlay.statusMessage }}
+      </p>
+      <!-- 非会话态且已有文本时保留一行预览（例如待写回），避免完全黑盒 -->
+      <p
+        v-else-if="!isWaveOnlySession && hasTranscript"
+        class="preview-line"
+      >
         {{ overlay.displayTranscript }}
       </p>
-
-      <p class="status-copy">{{ overlay.statusMessage }}</p>
     </section>
   </main>
 </template>
@@ -73,37 +88,35 @@ onBeforeUnmount(() => {
 .shell {
   width: 100%;
   height: 100%;
-  display: grid;
-  place-items: center;
-  background: transparent;
-}
-
-.capsule {
-  width: min(420px, calc(100vw - 20px));
-  min-height: 94px;
-  padding: 14px 16px 12px;
-  box-sizing: border-box;
-  display: grid;
-  gap: 8px;
-  border-radius: 28px;
-  background: linear-gradient(180deg, rgba(255, 252, 248, 0.96), rgba(255, 245, 236, 0.92));
-  border: 1px solid rgba(255, 255, 255, 0.94);
-  box-shadow:
-    0 22px 50px rgba(79, 52, 28, 0.18),
-    0 0 0 6px rgba(255, 190, 132, 0.1);
-  transition: transform 140ms ease, box-shadow 140ms ease;
-}
-
-.capsule.active {
-  box-shadow:
-    0 26px 58px rgba(79, 52, 28, 0.22),
-    0 0 0 7px rgba(255, 173, 111, 0.14);
-}
-
-.capsule-head {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  background: transparent;
+  box-sizing: border-box;
+  padding: 4px 8px;
+}
+
+.anchor-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 252, 248, 0.94), rgba(255, 245, 236, 0.88));
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  box-shadow:
+    0 14px 32px rgba(79, 52, 28, 0.14),
+    0 0 0 4px rgba(255, 190, 132, 0.08);
+  transition: box-shadow 140ms ease;
+  max-width: calc(100vw - 16px);
+}
+
+.anchor-card.active {
+  box-shadow:
+    0 18px 40px rgba(79, 52, 28, 0.18),
+    0 0 0 5px rgba(255, 173, 111, 0.12);
 }
 
 .wave-anchor {
@@ -177,35 +190,25 @@ onBeforeUnmount(() => {
   animation-delay: -0.14s;
 }
 
-.phase-copy,
-.transcript-copy,
-.status-copy {
+.err-caption {
   margin: 0;
-}
-
-.phase-copy {
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(124, 84, 51, 0.72);
-}
-
-.transcript-copy {
-  min-height: 22px;
-  font-size: 18px;
+  font-size: 11px;
   line-height: 1.35;
-  color: rgba(58, 35, 20, 0.96);
-  word-break: break-word;
+  max-width: 220px;
+  text-align: center;
+  color: rgba(142, 48, 48, 0.92);
 }
 
-.transcript-copy.placeholder {
-  color: rgba(132, 107, 88, 0.58);
-}
-
-.status-copy {
+.preview-line {
+  margin: 0;
   font-size: 12px;
-  line-height: 1.45;
-  color: rgba(120, 89, 63, 0.78);
+  line-height: 1.3;
+  max-width: 260px;
+  max-height: 2.6em;
+  overflow: hidden;
+  text-align: center;
+  color: rgba(58, 35, 20, 0.88);
+  word-break: break-word;
 }
 
 @keyframes breathe {
@@ -222,18 +225,9 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 680px) {
-  .capsule {
-    width: calc(100vw - 16px);
-    padding: 12px 14px;
-  }
-
   .wave-anchor {
     width: 70px;
     height: 38px;
-  }
-
-  .transcript-copy {
-    font-size: 16px;
   }
 }
 </style>
