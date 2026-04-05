@@ -248,7 +248,7 @@ onUnmounted(() => {
             请求语音识别权限
           </button>
           <button class="action-button" type="button" @click="requestAccessibility">
-            打开辅助功能设置
+            辅助功能（系统弹窗 + 设置）
           </button>
           <button class="action-button ghost" type="button" @click="requestInputMonitoring">
             请求输入监控权限

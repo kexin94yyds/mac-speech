@@ -41,6 +41,11 @@ struct SpeechBridgePayload {
 
 #[cfg(target_os = "macos")]
 unsafe extern "C" {
+    fn iterate_prompt_accessibility_trusted_dialog();
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
     fn speech_bridge_check_microphone_authorization() -> bool;
     fn speech_bridge_request_microphone_authorization() -> bool;
     fn speech_bridge_check_speech_authorization() -> bool;
@@ -135,16 +140,25 @@ mod macos {
     }
 
     pub fn open_accessibility_settings() -> Result<(), String> {
-        let status = Command::new("open")
-            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
-            .status()
-            .map_err(|error| format!("failed to open macOS Accessibility settings: {error}"))?;
-
-        if status.success() {
-            Ok(())
-        } else {
-            Err("macOS Accessibility settings returned a non-zero exit code".to_string())
+        const CANDIDATES: &[&str] = &[
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+            "x-apple.systempreferences:com.apple.settings.extensions.PrivacySecurity.extension?Privacy_Accessibility",
+        ];
+        for url in CANDIDATES {
+            if Command::new("open")
+                .arg(url)
+                .status()
+                .map(|status| status.success())
+                .unwrap_or(false)
+            {
+                return Ok(());
+            }
         }
+        Command::new("open")
+            .args(["-a", "System Settings"])
+            .status()
+            .map_err(|error| format!("failed to open System Settings: {error}"))?;
+        Ok(())
     }
 
     pub fn check_input_monitoring_permission() -> bool {
@@ -321,7 +335,12 @@ fn speech_recognition_status() -> bool {
 fn request_accessibility_permission() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        macos::open_accessibility_settings()
+        // Native trust dialog (includes “Open System Settings”) — works when deep links fail on newer macOS.
+        unsafe {
+            iterate_prompt_accessibility_trusted_dialog();
+        }
+        let _ = macos::open_accessibility_settings();
+        Ok(())
     }
     #[cfg(not(target_os = "macos"))]
     {
