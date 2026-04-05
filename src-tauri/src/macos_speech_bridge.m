@@ -68,6 +68,10 @@ typedef void (*SpeechBridgeCallback)(const char *event_type, const char *text, v
         [self.recognitionTask cancel];
     }
     self.recognitionTask = nil;
+
+    // New engine instance per teardown: reusing one AVAudioEngine across SFSpeech sessions
+    // sporadically leaves startAndReturnError failing on later passes (no "started" event).
+    self.audioEngine = [[AVAudioEngine alloc] init];
 }
 
 - (void)beginRecognition {
@@ -196,11 +200,21 @@ typedef void (*SpeechBridgeCallback)(const char *event_type, const char *text, v
 @end
 
 void speech_bridge_start(SpeechBridgeCallback callback, void *user_data) {
-    [[IterateSpeechBridge shared] startWithCallback:callback userData:user_data];
+    // Tauri commands may invoke this off the main queue; AVAudioEngine + Speech must run on main.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[IterateSpeechBridge shared] startWithCallback:callback userData:user_data];
+    });
 }
 
 void speech_bridge_stop(void) {
-    [[IterateSpeechBridge shared] stop];
+    void (^stopBlock)(void) = ^{
+        [[IterateSpeechBridge shared] stop];
+    };
+    if ([NSThread isMainThread]) {
+        stopBlock();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), stopBlock);
+    }
 }
 
 bool speech_bridge_check_microphone_authorization(void) {
