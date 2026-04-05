@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const accessibilityGranted = ref(false)
 const inputMonitoringGranted = ref(false)
@@ -68,10 +69,19 @@ async function refreshStatuses() {
     speechRecognitionGranted.value = speechRecognition
     accessibilityGranted.value = accessibility
     inputMonitoringGranted.value = inputMonitoring
-    statusSummary.value =
-      microphone && speechRecognition && accessibility && inputMonitoring
-        ? '系统已就绪。主 App 负责配置，按 Fn 只会唤起底部波浪。'
-        : '当前还有系统权限未放行。先在主 App 完成四项授权，再测试 Fn 语音链路。'
+    if (microphone && speechRecognition && accessibility && inputMonitoring) {
+      statusSummary.value = '系统已就绪。主 App 负责配置，按 Fn 只会唤起底部波浪。'
+    } else {
+      const missing = [
+        !microphone ? '麦克风' : '',
+        !speechRecognition ? '语音识别' : '',
+        !accessibility ? '辅助功能' : '',
+        !inputMonitoring ? '输入监控' : ''
+      ]
+        .filter(Boolean)
+        .join('、')
+      statusSummary.value = `系统仍报告未放行：${missing}。若你已在「系统设置 → 隐私与安全性」里打开过，请点「刷新权限状态」，或从设置页切回本窗口（会自动重读）。`
+    }
   } catch (error) {
     statusSummary.value = `环境状态读取失败：${String(error)}`
   }
@@ -152,8 +162,33 @@ async function runPermissionWizard() {
   }
 }
 
+let disposeWindowFocus: (() => void) | undefined
+let visibilityHandler: (() => void) | null = null
+
 onMounted(async () => {
   await refreshStatuses()
+  visibilityHandler = () => {
+    if (document.visibilityState === 'visible') {
+      void refreshStatuses()
+    }
+  }
+  document.addEventListener('visibilitychange', visibilityHandler)
+  try {
+    disposeWindowFocus = await getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+      if (focused) {
+        void refreshStatuses()
+      }
+    })
+  } catch {
+    // ignore if API unavailable
+  }
+})
+
+onUnmounted(() => {
+  if (visibilityHandler) {
+    document.removeEventListener('visibilitychange', visibilityHandler)
+  }
+  disposeWindowFocus?.()
 })
 </script>
 
@@ -171,7 +206,9 @@ onMounted(async () => {
       <p class="lead">
         这个窗口现在回到“工具控制台”的角色，负责权限、入口、词典和历史这些长期能力。热键交互层单独拆成
         overlay。现在权限 onboarding 也回收到主 App：先完成四项授权，再按一次 <code>Fn</code>
-        开始录音、再按一次停止并把文本注入当前输入框。
+        开始录音、再按一次停止并把文本注入当前输入框。若在「系统设置」里已勾选权限，回到本窗口后卡片仍显示「待授权」，请点
+        <strong>刷新权限状态</strong>（或点一下别的 App 再点回来，会自动重读）。测试请优先使用本仓库
+        <code>pnpm tauri:build</code> 打出来的 <code>.app</code>，避免继续打开旧的「应用程序」里拷贝导致界面不是最新版。
       </p>
 
       <section class="status-grid">
@@ -200,6 +237,9 @@ onMounted(async () => {
           </button>
           <button class="action-button wizard" type="button" @click="runPermissionWizard">
             一键权限向导
+          </button>
+          <button class="action-button ghost" type="button" @click="refreshStatuses">
+            刷新权限状态
           </button>
           <button class="action-button" type="button" @click="requestMicrophone">
             请求麦克风权限
