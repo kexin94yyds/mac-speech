@@ -50,9 +50,16 @@ onBeforeUnmount(() => {
 <template>
   <main class="shell">
     <div class="dock-stack" data-tauri-drag-region>
-      <!-- 失败文案不放浮层（难看）；详情见主窗口 diagnostics / statusMessage -->
+      <!-- 监听中：显示实时识别字（否则只有波浪，体感像「不出字」） -->
       <p
-        v-if="!isWaveOnlySession && hasTranscript"
+        v-if="overlay.sessionPhase === 'listening' && hasTranscript"
+        class="float-caption float-caption--live"
+      >
+        {{ overlay.displayTranscript }}
+      </p>
+      <!-- 非监听态：待写回等预览（idle / ready / stopping 等） -->
+      <p
+        v-else-if="!isWaveOnlySession && hasTranscript"
         class="float-caption float-caption--preview"
       >
         {{ overlay.displayTranscript }}
@@ -125,6 +132,16 @@ onBeforeUnmount(() => {
   text-shadow:
     0 0 10px rgba(255, 255, 255, 0.95),
     0 1px 2px rgba(255, 255, 255, 0.9);
+}
+
+.float-caption--live {
+  color: rgba(32, 22, 14, 0.94);
+  font-size: 13px;
+  line-height: 1.35;
+  max-width: 280px;
+  max-height: 3.9em;
+  overflow: hidden;
+  word-break: break-word;
 }
 
 .float-caption--preview {

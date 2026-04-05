@@ -59,8 +59,8 @@ fn install_overlay_position_persistence(overlay: &tauri::WebviewWindow, app: tau
     });
 }
 
-const ANCHOR_WIDTH: f64 = 210.0;
-const ANCHOR_HEIGHT: f64 = 88.0;
+const ANCHOR_WIDTH: f64 = 288.0;
+const ANCHOR_HEIGHT: f64 = 118.0;
 const ANCHOR_BOTTOM_MARGIN: f64 = 28.0;
 
 #[derive(Clone, Serialize)]
