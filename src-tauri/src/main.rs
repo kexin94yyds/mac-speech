@@ -1,11 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::ffi::{c_char, c_void, CStr};
+use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{
     Emitter, LogicalSize, Manager, PhysicalPosition, Position, Size, WebviewWindowBuilder,
     WindowEvent,
@@ -21,6 +22,43 @@ const NATIVE_ERROR_EVENT: &str = "speech://native-error";
 const OWN_BUNDLE_ID: &str = "xin.iterate.speech";
 static LAST_TARGET_APP_BUNDLE_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
+
+#[derive(Debug, Serialize, Deserialize)]
+struct OverlayPositionFile {
+    x: i32,
+    y: i32,
+}
+
+fn overlay_position_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let dir = app.path().app_config_dir().ok()?;
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir.join("overlay_position.json"))
+}
+
+fn read_saved_overlay_position(app: &tauri::AppHandle) -> Option<PhysicalPosition<i32>> {
+    let path = overlay_position_path(app)?;
+    let data = std::fs::read_to_string(path).ok()?;
+    let p: OverlayPositionFile = serde_json::from_str(&data).ok()?;
+    Some(PhysicalPosition::new(p.x, p.y))
+}
+
+fn install_overlay_position_persistence(overlay: &tauri::WebviewWindow, app: tauri::AppHandle) {
+    let app_for_save = app.clone();
+    let overlay_clone = overlay.clone();
+    let _ = overlay_clone.on_window_event(move |event| {
+        let WindowEvent::Moved(pos) = event else {
+            return;
+        };
+        let Some(path) = overlay_position_path(&app_for_save) else {
+            return;
+        };
+        let payload = OverlayPositionFile { x: pos.x, y: pos.y };
+        if let Ok(bytes) = serde_json::to_vec(&payload) {
+            let _ = std::fs::write(path, bytes);
+        }
+    });
+}
+
 const ANCHOR_WIDTH: f64 = 210.0;
 const ANCHOR_HEIGHT: f64 = 88.0;
 const ANCHOR_BOTTOM_MARGIN: f64 = 28.0;
@@ -513,15 +551,20 @@ fn reveal_overlay_anchor(window: &tauri::WebviewWindow) {
             ANCHOR_HEIGHT,
         )));
 
-        if let Ok(Some(monitor)) = window_for_main_thread.current_monitor() {
-            let monitor_size = monitor.size();
-            let scale_factor = monitor.scale_factor();
-            let x = ((monitor_size.width as f64 - ANCHOR_WIDTH * scale_factor) / 2.0).round() as i32;
-            let y =
-                (monitor_size.height as f64 - ANCHOR_HEIGHT * scale_factor - ANCHOR_BOTTOM_MARGIN * scale_factor)
+        if let Some(app) = APP_HANDLE.get() {
+            if let Some(saved) = read_saved_overlay_position(app) {
+                let _ = window_for_main_thread.set_position(Position::Physical(saved));
+            } else if let Ok(Some(monitor)) = window_for_main_thread.current_monitor() {
+                let monitor_size = monitor.size();
+                let scale_factor = monitor.scale_factor();
+                let x = ((monitor_size.width as f64 - ANCHOR_WIDTH * scale_factor) / 2.0).round() as i32;
+                let y = (monitor_size.height as f64
+                    - ANCHOR_HEIGHT * scale_factor
+                    - ANCHOR_BOTTOM_MARGIN * scale_factor)
                     .round() as i32;
-            let _ =
-                window_for_main_thread.set_position(Position::Physical(PhysicalPosition::new(x, y)));
+                let _ = window_for_main_thread
+                    .set_position(Position::Physical(PhysicalPosition::new(x, y)));
+            }
         }
 
         eprintln!("[iterate-speech] revealing bottom anchor");
@@ -596,6 +639,9 @@ fn main() {
             eprintln!("[iterate-speech] app setup begin");
             let _ = APP_HANDLE.set(app.handle().clone());
             ensure_overlay_window(&app.handle())?;
+            if let Some(overlay) = app.get_webview_window("overlay") {
+                install_overlay_position_persistence(&overlay, app.handle().clone());
+            }
             install_main_window_close_guard(&app.handle());
             // Creating the overlay webview can leave the main window de-emphasized; force it
             // forward so first launch reliably shows the permission hub.

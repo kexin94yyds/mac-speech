@@ -49,7 +49,7 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="shell">
-    <div class="dock-stack">
+    <div class="dock-stack" data-tauri-drag-region>
       <!-- 失败文案不放浮层（难看）；详情见主窗口 diagnostics / statusMessage -->
       <p
         v-if="!isWaveOnlySession && hasTranscript"
@@ -109,6 +109,11 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 5px;
   max-width: calc(100vw - 8px);
+  cursor: grab;
+}
+
+.dock-stack:active {
+  cursor: grabbing;
 }
 
 .float-caption {
