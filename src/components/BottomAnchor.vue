@@ -32,6 +32,18 @@ const showErrorCaption = computed(
     overlay.sessionPhase.value === 'unsupported',
 )
 
+/** 对齐 iOS `TypelessStyleMicLevelBar`：窄轨 + 黑填充，宽度随 micLevel 变 */
+const levelBarFillPx = computed(() => {
+  const raw = overlay.micLevel.value
+  const v = Math.min(1, Math.max(0, raw))
+  const eff = v < 0.022 ? 0 : v
+  const track = 54
+  if (eff <= 0) {
+    return 0
+  }
+  return Math.min(track, Math.max(8, track * eff))
+})
+
 onMounted(async () => {
   await overlay.initialize()
 })
@@ -43,7 +55,23 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="shell">
-    <section class="anchor-card" :class="{ active: isActive }">
+    <div class="dock-stack">
+      <p v-if="showErrorCaption" class="float-caption float-caption--err">
+        {{ overlay.statusMessage }}
+      </p>
+      <p
+        v-else-if="!isWaveOnlySession && hasTranscript"
+        class="float-caption float-caption--preview"
+      >
+        {{ overlay.displayTranscript }}
+      </p>
+      <!-- iOS VoiceHalfCircleDock：录音态顶部细条电平 -->
+      <div v-if="isActive" class="level-bar-track" aria-hidden="true">
+        <div
+          class="level-bar-fill"
+          :style="{ width: levelBarFillPx > 0 ? `${levelBarFillPx}px` : '0' }"
+        />
+      </div>
       <div
         class="wave-anchor"
         :class="{ active: isActive, idle: !isActive }"
@@ -56,17 +84,7 @@ onBeforeUnmount(() => {
         <span></span>
         <span></span>
       </div>
-      <p v-if="showErrorCaption" class="err-caption">
-        {{ overlay.statusMessage }}
-      </p>
-      <!-- 非会话态且已有文本时保留一行预览（例如待写回），避免完全黑盒 -->
-      <p
-        v-else-if="!isWaveOnlySession && hasTranscript"
-        class="preview-line"
-      >
-        {{ overlay.displayTranscript }}
-      </p>
-    </section>
+    </div>
   </main>
 </template>
 
@@ -93,30 +111,52 @@ onBeforeUnmount(() => {
   justify-content: center;
   background: transparent;
   box-sizing: border-box;
-  padding: 4px 8px;
+  padding: 2px 4px;
 }
 
-.anchor-card {
+.dock-stack {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  box-sizing: border-box;
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(255, 252, 248, 0.94), rgba(255, 245, 236, 0.88));
-  border: 1px solid rgba(255, 255, 255, 0.92);
-  box-shadow:
-    0 14px 32px rgba(79, 52, 28, 0.14),
-    0 0 0 4px rgba(255, 190, 132, 0.08);
-  transition: box-shadow 140ms ease;
-  max-width: calc(100vw - 16px);
+  gap: 5px;
+  max-width: calc(100vw - 8px);
 }
 
-.anchor-card.active {
-  box-shadow:
-    0 18px 40px rgba(79, 52, 28, 0.18),
-    0 0 0 5px rgba(255, 173, 111, 0.12);
+.float-caption {
+  margin: 0;
+  max-width: 200px;
+  text-align: center;
+  font-size: 10px;
+  line-height: 1.3;
+  text-shadow:
+    0 0 10px rgba(255, 255, 255, 0.95),
+    0 1px 2px rgba(255, 255, 255, 0.9);
+}
+
+.float-caption--err {
+  color: rgba(142, 48, 48, 0.95);
+}
+
+.float-caption--preview {
+  color: rgba(58, 35, 20, 0.9);
+  max-height: 2.6em;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.level-bar-track {
+  width: 54px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+
+.level-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: rgba(24, 24, 24, 0.88);
+  transition: width 70ms ease-out;
 }
 
 .wave-anchor {
@@ -128,22 +168,22 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   gap: 5px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.76));
-  border: 1px solid rgba(255, 255, 255, 0.94);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 252, 248, 0.9));
+  border: 1px solid rgba(0, 0, 0, 0.06);
   box-shadow:
-    0 12px 24px rgba(59, 37, 18, 0.1),
-    0 0 0 4px rgba(255, 173, 111, 0.08);
+    0 10px 28px rgba(59, 37, 18, 0.14),
+    0 2px 8px rgba(0, 0, 0, 0.06);
   transition: transform 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
 }
 
 .wave-anchor::before {
   content: "";
   position: absolute;
-  inset: auto 14px -8px;
-  height: 16px;
+  inset: auto 12px -6px;
+  height: 12px;
   border-radius: 999px;
-  background: rgba(255, 170, 108, 0.2);
-  filter: blur(12px);
+  background: rgba(255, 140, 72, 0.18);
+  filter: blur(10px);
   z-index: -1;
 }
 
@@ -153,8 +193,8 @@ onBeforeUnmount(() => {
 
 .wave-anchor.active {
   box-shadow:
-    0 16px 30px rgba(59, 37, 18, 0.16),
-    0 0 0 6px rgba(255, 173, 111, 0.12);
+    0 14px 32px rgba(59, 37, 18, 0.18),
+    0 0 0 1px rgba(255, 140, 72, 0.25);
 }
 
 .wave-anchor span {
@@ -188,27 +228,6 @@ onBeforeUnmount(() => {
 .wave-anchor span:nth-child(5) {
   height: 9px;
   animation-delay: -0.14s;
-}
-
-.err-caption {
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.35;
-  max-width: 220px;
-  text-align: center;
-  color: rgba(142, 48, 48, 0.92);
-}
-
-.preview-line {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.3;
-  max-width: 260px;
-  max-height: 2.6em;
-  overflow: hidden;
-  text-align: center;
-  color: rgba(58, 35, 20, 0.88);
-  word-break: break-word;
 }
 
 @keyframes breathe {

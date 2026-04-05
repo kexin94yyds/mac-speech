@@ -355,6 +355,7 @@ export function useSpeechOverlay() {
   function stopListening(commitOnEnd: boolean) {
     clearStopFallbackTimer()
     clearStartFallbackTimer()
+    stopMeter()
     const immediateCommitText = (transcript.value || partialTranscript.value).trim()
 
     if (commitOnEnd && immediateCommitText) {
@@ -457,6 +458,7 @@ export function useSpeechOverlay() {
     if (sessionPhase.value === 'starting') {
       clearStartFallbackTimer()
       shouldCommitOnEnd = false
+      stopMeter()
       sessionPhase.value = 'idle'
       statusMessage.value = '已取消正在启动的语音识别。'
       await invoke('stop_native_speech')
@@ -503,6 +505,11 @@ export function useSpeechOverlay() {
       const recognitionMode = event.payload.text === 'on-device' ? '本地实时识别' : '系统识别'
       statusMessage.value = `正在录音（${recognitionMode}），实时结果会逐步显示；再次按 Fn 会停止并尝试写回。`
       pushDiagnostic(`native speech started: ${recognitionMode}`)
+      try {
+        await ensureMeter(false)
+      } catch (error) {
+        pushDiagnostic(`电平条不可用（不影响识别）：${String(error)}`)
+      }
     })
     unlistenNativePartial = await listen<{ text: string }>('speech://native-partial', async (event) => {
       clearStartFallbackTimer()
@@ -519,6 +526,7 @@ export function useSpeechOverlay() {
         shouldCommitOnEnd = false
         sessionPhase.value = 'ready'
         statusMessage.value = '已拿到最终识别结果，正在尝试写回当前聚焦输入区。'
+        stopMeter()
         void commitTextToTarget(text)
         return
       }
@@ -528,6 +536,7 @@ export function useSpeechOverlay() {
       statusMessage.value = text
         ? '录音结束，文本已保留在浮层里，等待你手动写回。'
         : '没有拿到有效语音结果。'
+      stopMeter()
     })
     unlistenNativeError = await listen<{ text: string }>('speech://native-error', async (event) => {
       clearStartFallbackTimer()
