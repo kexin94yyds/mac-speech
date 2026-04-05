@@ -423,6 +423,9 @@ export function useSpeechOverlay() {
     }
 
     try {
+      await hideOverlay()
+      await new Promise((resolve) => window.setTimeout(resolve, 220))
+      await invoke('repin_paste_target_from_frontmost')
       await invoke('paste_text', { text: trimmed })
       lastCommittedText.value = trimmed
       manualDraft.value = ''
@@ -431,7 +434,6 @@ export function useSpeechOverlay() {
       sessionPhase.value = 'ready'
       statusMessage.value = '已尝试把文本写回当前聚焦输入区。'
       pushDiagnostic(`已写回：${trimmed.slice(0, 40)}`)
-      await hideOverlay()
     } catch (error) {
       const message = String(error)
       if (message.includes('写回超时')) {

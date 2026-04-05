@@ -515,6 +515,31 @@ fn remember_frontmost_app() -> Result<(), String> {
     capture_frontmost_target_app()
 }
 
+/// 浮层隐藏、焦点回落后再次采样前台，刷新写回目标（非自家 bundle 才覆盖）。
+#[tauri::command]
+fn repin_paste_target_from_frontmost() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let bundle_id = macos::frontmost_app_bundle_id()?;
+        if bundle_id == OWN_BUNDLE_ID {
+            eprintln!(
+                "[iterate-speech] repin_paste_target_from_frontmost skip own bundle_id={bundle_id}"
+            );
+            return Ok(());
+        }
+        let mut guard = last_target_app_bundle_id()
+            .lock()
+            .map_err(|_| "failed to lock target app bundle id store".to_string())?;
+        eprintln!("[iterate-speech] repin_paste_target_from_frontmost target={bundle_id}");
+        *guard = Some(bundle_id);
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(())
+    }
+}
+
 #[tauri::command]
 fn start_native_speech() -> Result<(), String> {
     eprintln!("[iterate-speech] start_native_speech invoked");
@@ -682,6 +707,7 @@ fn main() {
             request_speech_recognition_permission,
             request_input_monitoring_permission,
             remember_frontmost_app,
+            repin_paste_target_from_frontmost,
             show_main_window,
             reveal_overlay_window,
             start_native_speech,
