@@ -89,18 +89,15 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-:global(body) {
-  margin: 0;
-  background: transparent;
-  overflow: hidden;
-  font-family: "SF Pro Display", "PingFang SC", sans-serif;
-}
-
 :global(html),
 :global(body),
 :global(#app) {
+  margin: 0;
   width: 100%;
   height: 100%;
+  background: transparent !important;
+  overflow: hidden;
+  font-family: "SF Pro Display", "PingFang SC", sans-serif;
 }
 
 .shell {
@@ -148,7 +145,7 @@ onBeforeUnmount(() => {
   width: 54px;
   height: 5px;
   border-radius: 999px;
-  background: rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.22);
   overflow: hidden;
 }
 
@@ -168,23 +165,15 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   gap: 5px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 252, 248, 0.9));
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  box-shadow:
-    0 10px 28px rgba(59, 37, 18, 0.14),
-    0 2px 8px rgba(0, 0, 0, 0.06);
-  transition: transform 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  filter: drop-shadow(0 3px 10px rgba(59, 37, 18, 0.22));
+  transition: transform 140ms ease, opacity 140ms ease, filter 140ms ease;
 }
 
 .wave-anchor::before {
-  content: "";
-  position: absolute;
-  inset: auto 12px -6px;
-  height: 12px;
-  border-radius: 999px;
-  background: rgba(255, 140, 72, 0.18);
-  filter: blur(10px);
-  z-index: -1;
+  display: none;
 }
 
 .wave-anchor.idle {
@@ -192,9 +181,7 @@ onBeforeUnmount(() => {
 }
 
 .wave-anchor.active {
-  box-shadow:
-    0 14px 32px rgba(59, 37, 18, 0.18),
-    0 0 0 1px rgba(255, 140, 72, 0.25);
+  filter: drop-shadow(0 4px 14px rgba(255, 120, 48, 0.35));
 }
 
 .wave-anchor span {
