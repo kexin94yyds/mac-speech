@@ -429,8 +429,6 @@ export function useSpeechOverlay() {
     }
 
     try {
-      await hideOverlay()
-      await new Promise((resolve) => window.setTimeout(resolve, 90))
       await invoke('paste_text', { text: trimmed })
       lastCommittedText.value = trimmed
       manualDraft.value = ''
@@ -439,6 +437,7 @@ export function useSpeechOverlay() {
       sessionPhase.value = 'ready'
       statusMessage.value = '已尝试把文本写回当前聚焦输入区。'
       pushDiagnostic(`已写回：${trimmed.slice(0, 40)}`)
+      await hideOverlay()
     } catch (error) {
       const message = String(error)
       if (message.includes('写回超时')) {
@@ -453,7 +452,8 @@ export function useSpeechOverlay() {
       sessionPhase.value = 'error'
       statusMessage.value = `写回失败：${message}`
       pushDiagnostic(statusMessage.value)
-      void hideOverlay()
+      // 先别关浮层：否则看不到原因；语音链路自己的 error 仍会在别处 hide
+      await invoke('reveal_overlay_window').catch(() => {})
     }
   }
 

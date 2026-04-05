@@ -26,6 +26,14 @@ const isWaveOnlySession = computed(
     overlay.sessionPhase.value === 'stopping',
 )
 
+/** 仅写回失败时在浮层提示（语音 native-error 仍不挡波浪） */
+const showWritebackError = computed(
+  () =>
+    overlay.sessionPhase.value === 'error' &&
+    (overlay.statusMessage.value.includes('写回失败') ||
+      overlay.statusMessage.value.includes('未记录写回目标')),
+)
+
 /** 对齐 iOS `TypelessStyleMicLevelBar`：窄轨 + 黑填充，宽度随 micLevel 变 */
 const levelBarFillPx = computed(() => {
   const raw = overlay.micLevel.value
@@ -50,9 +58,15 @@ onBeforeUnmount(() => {
 <template>
   <main class="shell">
     <div class="dock-stack" data-tauri-drag-region>
+      <p
+        v-if="showWritebackError"
+        class="float-caption float-caption--err"
+      >
+        {{ overlay.statusMessage }}
+      </p>
       <!-- 监听中：显示实时识别字（否则只有波浪，体感像「不出字」） -->
       <p
-        v-if="overlay.sessionPhase === 'listening' && hasTranscript"
+        v-else-if="overlay.sessionPhase === 'listening' && hasTranscript"
         class="float-caption float-caption--live"
       >
         {{ overlay.displayTranscript }}
@@ -132,6 +146,15 @@ onBeforeUnmount(() => {
   text-shadow:
     0 0 10px rgba(255, 255, 255, 0.95),
     0 1px 2px rgba(255, 255, 255, 0.9);
+}
+
+.float-caption--err {
+  color: rgba(142, 48, 48, 0.95);
+  font-size: 11px;
+  line-height: 1.35;
+  max-width: 260px;
+  max-height: 5em;
+  overflow: hidden;
 }
 
 .float-caption--live {
