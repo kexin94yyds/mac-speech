@@ -430,15 +430,10 @@ fn request_input_monitoring_permission() -> Result<(), String> {
 fn paste_text(text: String, app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        let bundle_id = last_target_app_bundle_id()
+        let stored_target = last_target_app_bundle_id()
             .lock()
             .map_err(|_| "failed to lock target app bundle id store".to_string())?
-            .clone()
-            .ok_or_else(|| {
-                "未记录写回目标：请先把光标放在要输入的窗口里，再按第一次 Fn（不要先点到 iterate-speech 主窗口再按）。".to_string()
-            })?;
-
-        eprintln!("[iterate-speech] paste_text target_bundle={bundle_id} chars={}", text.chars().count());
+            .clone();
 
         let previous = app.clipboard().read_text().ok();
 
@@ -446,8 +441,28 @@ fn paste_text(text: String, app: tauri::AppHandle) -> Result<(), String> {
             .write_text(&text)
             .map_err(|error| format!("failed to write transcript to clipboard: {error}"))?;
 
-        macos::activate_app(&bundle_id)?;
-        thread::sleep(Duration::from_millis(280));
+        match stored_target {
+            Some(bundle_id) if bundle_id != OWN_BUNDLE_ID => {
+                eprintln!(
+                    "[iterate-speech] paste_text target_bundle={bundle_id} chars={}",
+                    text.chars().count()
+                );
+                macos::activate_app(&bundle_id)?;
+                thread::sleep(Duration::from_millis(280));
+            }
+            Some(bundle_id) => {
+                eprintln!(
+                    "[iterate-speech] paste_text skip activate stored is own bundle_id={bundle_id}"
+                );
+                thread::sleep(Duration::from_millis(120));
+            }
+            None => {
+                eprintln!(
+                    "[iterate-speech] paste_text WARNING no stored target; Cmd+V goes to current frontmost (不稳定，建议先在目标输入框按第一次 Fn)"
+                );
+                thread::sleep(Duration::from_millis(160));
+            }
+        }
 
         thread::sleep(Duration::from_millis(90));
         macos::simulate_paste()?;
