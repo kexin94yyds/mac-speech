@@ -165,8 +165,8 @@ mod macos {
             .map_err(|_| "failed to create Cmd+V key up event")?;
         key_up.set_flags(CGEventFlags::CGEventFlagCommand);
 
-        key_down.post(CGEventTapLocation::HID);
-        key_up.post(CGEventTapLocation::HID);
+        key_down.post(CGEventTapLocation::AnnotatedSession);
+        key_up.post(CGEventTapLocation::AnnotatedSession);
         thread::sleep(Duration::from_millis(60));
 
         Ok(())
@@ -393,8 +393,14 @@ fn request_accessibility_permission() -> Result<(), String> {
 #[tauri::command]
 fn request_microphone_permission() -> Result<bool, String> {
     #[cfg(target_os = "macos")]
-    unsafe {
-        Ok(speech_bridge_request_microphone_authorization())
+    {
+        let granted = unsafe { speech_bridge_request_microphone_authorization() };
+        if !granted {
+            let _ = std::process::Command::new("open")
+                .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+                .spawn();
+        }
+        Ok(granted)
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -405,8 +411,14 @@ fn request_microphone_permission() -> Result<bool, String> {
 #[tauri::command]
 fn request_speech_recognition_permission() -> Result<bool, String> {
     #[cfg(target_os = "macos")]
-    unsafe {
-        Ok(speech_bridge_request_speech_authorization())
+    {
+        let granted = unsafe { speech_bridge_request_speech_authorization() };
+        if !granted {
+            let _ = std::process::Command::new("open")
+                .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition")
+                .spawn();
+        }
+        Ok(granted)
     }
     #[cfg(not(target_os = "macos"))]
     {

@@ -69,8 +69,6 @@ typedef void (*SpeechBridgeCallback)(const char *event_type, const char *text, v
     }
     self.recognitionTask = nil;
 
-    // New engine instance per teardown: reusing one AVAudioEngine across SFSpeech sessions
-    // sporadically leaves startAndReturnError failing on later passes (no "started" event).
     self.audioEngine = [[AVAudioEngine alloc] init];
 }
 
@@ -154,53 +152,33 @@ typedef void (*SpeechBridgeCallback)(const char *event_type, const char *text, v
     self.callback = callback;
     self.userData = userData;
 
-    // If the previous session did not fully unwind (e.g. rapid Fn cycles), reset before
-    // re-entering the async authorization chain so the next beginRecognition is clean.
     [self resetRecognition:YES];
 
-    __weak typeof(self) weakSelf = self;
-    [SFSpeechRecognizer requestAuthorization:^(SFSpeechRecognizerAuthorizationStatus status) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (strongSelf == nil) {
-                return;
-            }
+    // macOS 26: ad-hoc signed apps crash if requestAuthorization / requestAccess is called.
+    // Check status only; guide user to System Settings if denied.
+    SFSpeechRecognizerAuthorizationStatus speechStatus = [SFSpeechRecognizer authorizationStatus];
+    if (speechStatus == SFSpeechRecognizerAuthorizationStatusDenied ||
+        speechStatus == SFSpeechRecognizerAuthorizationStatusRestricted) {
+        [self emitEvent:@"error" text:@"语音识别权限未开启，请在「系统设置 → 隐私与安全性 → 语音识别」中添加本 App"];
+        return;
+    }
 
-            if (status != SFSpeechRecognizerAuthorizationStatusAuthorized) {
-                [strongSelf emitEvent:@"error" text:@"语音识别权限未开启"];
-                return;
-            }
+    AVAuthorizationStatus micStatus = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
+    if (micStatus == AVAuthorizationStatusDenied || micStatus == AVAuthorizationStatusRestricted) {
+        [self emitEvent:@"error" text:@"麦克风权限未开启，请在「系统设置 → 隐私与安全性 → 麦克风」中添加本 App"];
+        return;
+    }
 
-            [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio
-                                     completionHandler:^(BOOL granted) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    __strong typeof(weakSelf) innerSelf = weakSelf;
-                    if (innerSelf == nil) {
-                        return;
-                    }
-
-                    if (!granted) {
-                        [innerSelf emitEvent:@"error" text:@"麦克风权限未开启"];
-                        return;
-                    }
-
-                    [innerSelf beginRecognition];
-                });
-            }];
-        });
-    }];
+    [self beginRecognition];
 }
 
 - (void)stop {
-    // Match teardown in beginRecognition: cancel the recognition task and drop the
-    // request so a second Fn session does not attach to a stale SFSpeech pipeline.
     [self resetRecognition:YES];
 }
 
 @end
 
 void speech_bridge_start(SpeechBridgeCallback callback, void *user_data) {
-    // Tauri commands may invoke this off the main queue; AVAudioEngine + Speech must run on main.
     dispatch_async(dispatch_get_main_queue(), ^{
         [[IterateSpeechBridge shared] startWithCallback:callback userData:user_data];
     });
@@ -222,20 +200,7 @@ bool speech_bridge_check_microphone_authorization(void) {
 }
 
 bool speech_bridge_request_microphone_authorization(void) {
-    AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
-    if (status != AVAuthorizationStatusNotDetermined) {
-        return status == AVAuthorizationStatusAuthorized;
-    }
-
-    __block BOOL granted = NO;
-    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-    [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio
-                             completionHandler:^(BOOL didGrant) {
-        granted = didGrant;
-        dispatch_semaphore_signal(semaphore);
-    }];
-    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
-    return granted;
+    return [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio] == AVAuthorizationStatusAuthorized;
 }
 
 bool speech_bridge_check_speech_authorization(void) {
@@ -243,17 +208,5 @@ bool speech_bridge_check_speech_authorization(void) {
 }
 
 bool speech_bridge_request_speech_authorization(void) {
-    SFSpeechRecognizerAuthorizationStatus status = [SFSpeechRecognizer authorizationStatus];
-    if (status != SFSpeechRecognizerAuthorizationStatusNotDetermined) {
-        return status == SFSpeechRecognizerAuthorizationStatusAuthorized;
-    }
-
-    __block SFSpeechRecognizerAuthorizationStatus resolvedStatus = status;
-    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-    [SFSpeechRecognizer requestAuthorization:^(SFSpeechRecognizerAuthorizationStatus nextStatus) {
-        resolvedStatus = nextStatus;
-        dispatch_semaphore_signal(semaphore);
-    }];
-    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
-    return resolvedStatus == SFSpeechRecognizerAuthorizationStatusAuthorized;
+    return [SFSpeechRecognizer authorizationStatus] == SFSpeechRecognizerAuthorizationStatusAuthorized;
 }
