@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "iterate-speech",
+  "version": "0.1.0",
+  "identifier": "xin.iterate.speech",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "iterate-speech",
+        "url": "index.html",
+        "width": 1040,
+        "height": 760,
+        "minWidth": 920,
+        "minHeight": 680,
+        "resizable": true,
+        "decorations": true,
+        "transparent": false,
+        "visible": true,
+        "focus": true,
+        "center": true
+      },
+      {
+        "label": "overlay",
+        "title": "iterate-speech-overlay",
+        "url": "index.html?view=overlay",
+        "width": 420,
+        "height": 120,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "visible": false,
+        "focus": false,
+        "alwaysOnTop": true,
+        "visibleOnAllWorkspaces": true,
+        "skipTaskbar": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    }
+  }
+}
