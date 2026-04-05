@@ -26,13 +26,8 @@ const isWaveOnlySession = computed(
     overlay.sessionPhase.value === 'stopping',
 )
 
-/** 仅写回失败时在浮层提示（语音 native-error 仍不挡波浪） */
-const showWritebackError = computed(
-  () =>
-    overlay.sessionPhase.value === 'error' &&
-    (overlay.statusMessage.value.includes('写回失败') ||
-      overlay.statusMessage.value.includes('未记录写回目标')),
-)
+/** 对齐早期 hui「能试光标写回」：error 态保留一行说明，便于对照状态机 */
+const showErrorCaption = computed(() => overlay.sessionPhase.value === 'error')
 
 /** 对齐 iOS `TypelessStyleMicLevelBar`：窄轨 + 黑填充，宽度随 micLevel 变 */
 const levelBarFillPx = computed(() => {
@@ -59,7 +54,7 @@ onBeforeUnmount(() => {
   <main class="shell">
     <div class="dock-stack" data-tauri-drag-region>
       <p
-        v-if="showWritebackError"
+        v-if="showErrorCaption"
         class="float-caption float-caption--err"
       >
         {{ overlay.statusMessage }}

@@ -341,7 +341,6 @@ export function useSpeechOverlay() {
         statusMessage.value = '原生语音识别启动超时，暂时没有拿到可用结果。'
         pushDiagnostic('native started/partial 事件超时，已终止本次识别。')
         await invoke('stop_native_speech')
-        await hideOverlay()
       }, 2500)
       await invoke('start_native_speech')
     } catch (error) {
@@ -350,7 +349,6 @@ export function useSpeechOverlay() {
       statusMessage.value = `启动语音识别失败：${String(error)}`
       pushDiagnostic(statusMessage.value)
       stopMeter()
-      void hideOverlay()
     }
   }
 
@@ -400,7 +398,6 @@ export function useSpeechOverlay() {
           shouldCommitOnEnd = false
           sessionPhase.value = 'idle'
           statusMessage.value = '停止后没有拿到有效语音结果。'
-          void hideOverlay()
         }, 2600)
         return
       }
@@ -408,7 +405,6 @@ export function useSpeechOverlay() {
       shouldCommitOnEnd = false
       sessionPhase.value = 'ready'
       statusMessage.value = '停止信号已发出，已用当前识别结果完成回写流程。'
-      void hideOverlay()
     }, 1800)
   }
 
@@ -416,7 +412,6 @@ export function useSpeechOverlay() {
     const trimmed = text.trim()
     if (!trimmed) {
       statusMessage.value = '没有可写回的文本。'
-      void hideOverlay()
       return
     }
 
@@ -424,7 +419,6 @@ export function useSpeechOverlay() {
       sessionPhase.value = 'ready'
       statusMessage.value = '缺少辅助功能权限，当前只能保留文本，不能自动写回。'
       pushDiagnostic('写回被拦截：macOS Accessibility 尚未放行。')
-      void hideOverlay()
       return
     }
 
@@ -445,7 +439,6 @@ export function useSpeechOverlay() {
         sessionPhase.value = 'ready'
         statusMessage.value = '写回超时，文本已保留在浮层里。'
         pushDiagnostic(statusMessage.value)
-        void hideOverlay()
         return
       }
 
@@ -546,7 +539,6 @@ export function useSpeechOverlay() {
         ? '录音结束，文本已保留在浮层里，等待你手动写回。'
         : '没有拿到有效语音结果。'
       stopMeter()
-      void hideOverlay()
     })
     unlistenNativeError = await listen<{ text: string }>('speech://native-error', async (event) => {
       clearStartFallbackTimer()
@@ -556,7 +548,6 @@ export function useSpeechOverlay() {
       pushDiagnostic(statusMessage.value)
       shouldCommitOnEnd = false
       stopMeter()
-      void hideOverlay()
     })
   }
 
