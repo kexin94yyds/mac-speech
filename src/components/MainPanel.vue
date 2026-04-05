@@ -119,6 +119,39 @@ async function revealOverlayOnly() {
   }
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+/** 依次触发系统对话框 / 设置页，减少你到处找入口的时间（仍需你在每步点「允许」或去设置里勾选）。 */
+async function runPermissionWizard() {
+  windowHint.value = ''
+  try {
+    windowHint.value = '1/4 正在请求麦克风…（若弹出系统对话框请点「允许」）'
+    await invoke<boolean>('request_microphone_permission')
+    await sleep(500)
+
+    windowHint.value = '2/4 正在请求语音识别…（若弹出系统对话框请点「允许」）'
+    await invoke<boolean>('request_speech_recognition_permission')
+    await sleep(500)
+
+    windowHint.value =
+      '3/4 已打开「辅助功能」设置。请在列表中勾选 iterate-speech，然后回到本窗口。'
+    await invoke('request_accessibility_permission')
+    await sleep(800)
+
+    windowHint.value = '4/4 正在请求输入监控…（若弹出系统对话框请点「允许」）'
+    await invoke('request_input_monitoring_permission')
+    await sleep(500)
+
+    await refreshStatuses()
+    windowHint.value =
+      '向导已跑完。若「辅助功能」是手动勾选的，请确认已打开开关，再试按 Fn。'
+  } catch (error) {
+    windowHint.value = `向导中断：${String(error)}`
+  }
+}
+
 onMounted(async () => {
   await refreshStatuses()
 })
@@ -164,6 +197,9 @@ onMounted(async () => {
           </button>
           <button class="action-button ghost" type="button" @click="revealOverlayOnly">
             显示底部浮层
+          </button>
+          <button class="action-button wizard" type="button" @click="runPermissionWizard">
+            一键权限向导
           </button>
           <button class="action-button" type="button" @click="requestMicrophone">
             请求麦克风权限
@@ -376,6 +412,11 @@ h1 {
 .action-button.accent {
   background: linear-gradient(135deg, #2a6b4a, #1d4a34);
   box-shadow: 0 14px 28px rgba(29, 74, 52, 0.22);
+}
+
+.action-button.wizard {
+  background: linear-gradient(135deg, #5b3ea8, #3d2a72);
+  box-shadow: 0 14px 28px rgba(61, 42, 114, 0.22);
 }
 
 .window-hint {
