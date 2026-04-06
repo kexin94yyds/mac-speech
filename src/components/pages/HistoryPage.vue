@@ -12,6 +12,7 @@ interface HistoryItem {
 
 const items = ref<HistoryItem[]>([])
 const loading = ref(true)
+const copiedId = ref<number | null>(null)
 
 async function refresh() {
   loading.value = true
@@ -39,6 +40,7 @@ function relativeTime(timeStr: string): string {
 
 function copyText(text: string) {
   navigator.clipboard.writeText(text)
+  setTimeout(() => { copiedId.value = null }, 1500)
 }
 
 onMounted(() => {
@@ -62,7 +64,12 @@ onMounted(() => {
       <div v-if="loading" class="empty">正在加载…</div>
       <div v-else-if="items.length === 0" class="empty">暂无转写记录。按 Fn 开始第一次语音输入。</div>
 
-      <div v-for="item in items" :key="item.id" class="history-row">
+      <div
+        v-for="item in items"
+        :key="item.id"
+        class="history-row"
+        @click="copyText(item.text); copiedId = item.id"
+      >
         <div class="history-main">
           <p class="history-text">{{ item.text }}</p>
           <div class="history-meta">
@@ -73,7 +80,7 @@ onMounted(() => {
             <span v-else class="meta-badge pending">未写回</span>
           </div>
         </div>
-        <button class="btn-copy" @click="copyText(item.text)">复制</button>
+        <span class="copy-hint">{{ copiedId === item.id ? '已复制' : '点击复制' }}</span>
       </div>
     </section>
 
@@ -102,6 +109,30 @@ onMounted(() => {
   gap: 12px;
   padding: 14px 20px;
   border-top: 1px solid rgba(92, 54, 28, 0.05);
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+
+.history-row:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.history-row:active {
+  background: rgba(91, 62, 168, 0.06);
+}
+
+.copy-hint {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: rgba(84, 62, 49, 0.4);
+  padding-top: 2px;
+  white-space: nowrap;
+  transition: color 0.15s;
+}
+
+.history-row:hover .copy-hint {
+  color: rgba(91, 62, 168, 0.7);
 }
 
 .history-main { flex: 1; }
@@ -141,20 +172,6 @@ onMounted(() => {
   color: #d27a2c;
 }
 
-.btn-copy {
-  border: 0;
-  border-radius: 8px;
-  padding: 6px 12px;
-  font: inherit;
-  font-size: 12px;
-  color: rgba(56, 36, 24, 0.72);
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(92, 54, 28, 0.08);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.btn-copy:hover { background: rgba(255, 255, 255, 1); }
 
 .btn {
   border: 0;
