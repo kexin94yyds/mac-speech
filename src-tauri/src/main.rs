@@ -572,6 +572,7 @@ fn stop_native_speech() -> Result<(), String> {
 #[tauri::command]
 fn debug_log(message: String) {
     eprintln!("[iterate-speech][web] {message}");
+    history_debug_line(&format!("[web] {message}"));
 }
 
 #[tauri::command]
@@ -679,6 +680,27 @@ fn history_file_path() -> PathBuf {
     base.join("history.json")
 }
 
+fn history_debug_log_path() -> PathBuf {
+    let base = dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("iterate-speech");
+    let _ = std::fs::create_dir_all(&base);
+    base.join("history-debug.log")
+}
+
+fn history_debug_line(message: &str) {
+    let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+    let line = format!("{ts} {message}\n");
+    let path = history_debug_log_path();
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = std::io::Write::write_all(&mut file, line.as_bytes());
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct HistoryEntry {
     id: u64,
@@ -699,6 +721,13 @@ fn get_captured_target_app_bundle_id() -> Option<String> {
 #[tauri::command]
 fn append_history(text: String, target_app: String, written_back: bool) -> Result<u64, String> {
     let path = history_file_path();
+    history_debug_line(&format!(
+        "append_history start path={} len={} target={} written_back={}",
+        path.display(),
+        text.len(),
+        target_app,
+        written_back
+    ));
     let mut entries: Vec<HistoryEntry> = if path.exists() {
         let data = std::fs::read_to_string(&path).unwrap_or_default();
         serde_json::from_str(&data).unwrap_or_default()
@@ -726,14 +755,25 @@ fn append_history(text: String, target_app: String, written_back: bool) -> Resul
     }
 
     let json = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    std::fs::write(&path, json).map_err(|e| {
+        history_debug_line(&format!("append_history write_failed path={} error={}", path.display(), e));
+        e.to_string()
+    })?;
+    history_debug_line(&format!(
+        "append_history ok id={} total={} path={}",
+        id,
+        entries.len(),
+        path.display()
+    ));
     Ok(id)
 }
 
 #[tauri::command]
 fn mark_history_written_back(id: u64) -> Result<(), String> {
     let path = history_file_path();
+    history_debug_line(&format!("mark_history_written_back start id={} path={}", id, path.display()));
     if !path.exists() {
+        history_debug_line("mark_history_written_back history_file_missing");
         return Err("history file missing".to_string());
     }
     let data = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
@@ -744,6 +784,7 @@ fn mark_history_written_back(id: u64) -> Result<(), String> {
     entry.written_back = true;
     let json = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    history_debug_line(&format!("mark_history_written_back ok id={} path={}", id, path.display()));
     Ok(())
 }
 
@@ -751,10 +792,12 @@ fn mark_history_written_back(id: u64) -> Result<(), String> {
 fn load_history() -> Result<Vec<HistoryEntry>, String> {
     let path = history_file_path();
     if !path.exists() {
+        history_debug_line(&format!("load_history path_missing path={}", path.display()));
         return Ok(vec![]);
     }
     let data = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let entries: Vec<HistoryEntry> = serde_json::from_str(&data).unwrap_or_default();
+    history_debug_line(&format!("load_history ok total={} path={}", entries.len(), path.display()));
     Ok(entries)
 }
 
