@@ -165,6 +165,7 @@ mod macos {
             .map_err(|_| "failed to create Cmd+V key up event")?;
         key_up.set_flags(CGEventFlags::CGEventFlagCommand);
 
+        // 与 ClipBook / PAT-2026-077 一致：AnnotatedSession 比 HID 更易被前台文本框接收
         key_down.post(CGEventTapLocation::AnnotatedSession);
         key_up.post(CGEventTapLocation::AnnotatedSession);
         thread::sleep(Duration::from_millis(60));
@@ -254,6 +255,19 @@ mod macos {
             Ok(())
         } else {
             Err(format!("activating macOS app {bundle_id} returned a non-zero exit code"))
+        }
+    }
+
+    pub fn wait_frontmost_bundle(target_bundle_id: &str, timeout_ms: u64) -> Result<bool, String> {
+        let start = std::time::Instant::now();
+        loop {
+            if frontmost_app_bundle_id()? == target_bundle_id {
+                return Ok(true);
+            }
+            if start.elapsed() >= Duration::from_millis(timeout_ms) {
+                return Ok(false);
+            }
+            thread::sleep(Duration::from_millis(60));
         }
     }
 
@@ -393,14 +407,8 @@ fn request_accessibility_permission() -> Result<(), String> {
 #[tauri::command]
 fn request_microphone_permission() -> Result<bool, String> {
     #[cfg(target_os = "macos")]
-    {
-        let granted = unsafe { speech_bridge_request_microphone_authorization() };
-        if !granted {
-            let _ = std::process::Command::new("open")
-                .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
-                .spawn();
-        }
-        Ok(granted)
+    unsafe {
+        Ok(speech_bridge_request_microphone_authorization())
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -411,14 +419,8 @@ fn request_microphone_permission() -> Result<bool, String> {
 #[tauri::command]
 fn request_speech_recognition_permission() -> Result<bool, String> {
     #[cfg(target_os = "macos")]
-    {
-        let granted = unsafe { speech_bridge_request_speech_authorization() };
-        if !granted {
-            let _ = std::process::Command::new("open")
-                .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_SpeechRecognition")
-                .spawn();
-        }
-        Ok(granted)
+    unsafe {
+        Ok(speech_bridge_request_speech_authorization())
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -460,7 +462,21 @@ fn paste_text(text: String, app: tauri::AppHandle) -> Result<(), String> {
                     text.chars().count()
                 );
                 macos::activate_app(&bundle_id)?;
-                thread::sleep(Duration::from_millis(280));
+                let switched = macos::wait_frontmost_bundle(&bundle_id, 1200)?;
+                if !switched {
+                    eprintln!(
+                        "[iterate-speech] paste_text activate not frontmost yet, retry target_bundle={bundle_id}"
+                    );
+                    macos::activate_app(&bundle_id)?;
+                    let switched_retry = macos::wait_frontmost_bundle(&bundle_id, 900)?;
+                    if !switched_retry {
+                        let current = macos::frontmost_app_bundle_id().unwrap_or_else(|_| "<unknown>".to_string());
+                        eprintln!(
+                            "[iterate-speech] paste_text WARNING frontmost mismatch current={current} expected={bundle_id}"
+                        );
+                    }
+                }
+                thread::sleep(Duration::from_millis(180));
             }
             Some(bundle_id) => {
                 eprintln!(
@@ -532,10 +548,19 @@ fn remember_frontmost_app() -> Result<(), String> {
 fn repin_paste_target_from_frontmost() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        let bundle_id = macos::frontmost_app_bundle_id()?;
+        let mut bundle_id = macos::frontmost_app_bundle_id()?;
+        if bundle_id == OWN_BUNDLE_ID {
+            for _ in 0..10 {
+                thread::sleep(Duration::from_millis(60));
+                bundle_id = macos::frontmost_app_bundle_id()?;
+                if bundle_id != OWN_BUNDLE_ID {
+                    break;
+                }
+            }
+        }
         if bundle_id == OWN_BUNDLE_ID {
             eprintln!(
-                "[iterate-speech] repin_paste_target_from_frontmost skip own bundle_id={bundle_id}"
+                "[iterate-speech] repin_paste_target_from_frontmost skip own bundle_id={bundle_id} (frontmost did not settle)"
             );
             return Ok(());
         }
