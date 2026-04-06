@@ -161,6 +161,28 @@ mod macos {
         Ok(())
     }
 
+    pub fn open_microphone_settings() -> Result<(), String> {
+        const CANDIDATES: &[&str] = &[
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+            "x-apple.systempreferences:com.apple.settings.extensions.PrivacySecurity.extension?Privacy_Microphone",
+        ];
+        for url in CANDIDATES {
+            if Command::new("open")
+                .arg(url)
+                .status()
+                .map(|status| status.success())
+                .unwrap_or(false)
+            {
+                return Ok(());
+            }
+        }
+        Command::new("open")
+            .args(["-a", "System Settings"])
+            .status()
+            .map_err(|error| format!("failed to open System Settings: {error}"))?;
+        Ok(())
+    }
+
     pub fn check_input_monitoring_permission() -> bool {
         #[link(name = "ApplicationServices", kind = "framework")]
         unsafe extern "C" {
@@ -357,6 +379,18 @@ fn request_microphone_permission() -> Result<bool, String> {
     #[cfg(not(target_os = "macos"))]
     {
         Ok(true)
+    }
+}
+
+#[tauri::command]
+fn open_microphone_settings() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::open_microphone_settings()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(())
     }
 }
 
@@ -610,6 +644,7 @@ fn main() {
             speech_recognition_status,
             request_accessibility_permission,
             request_microphone_permission,
+            open_microphone_settings,
             request_speech_recognition_permission,
             request_input_monitoring_permission,
             remember_frontmost_app,

@@ -92,6 +92,15 @@ async function requestMicrophone() {
   await refreshStatuses()
 }
 
+async function openMicrophoneSettings() {
+  try {
+    await invoke('open_microphone_settings')
+    windowHint.value = '已打开「系统设置 → 隐私与安全性 → 麦克风」。请确认列表中已勾选 iterate-speech，然后回到本窗口点「刷新权限状态」。'
+  } catch (error) {
+    windowHint.value = `打开麦克风设置失败：${String(error)}`
+  }
+}
+
 async function requestSpeechRecognition() {
   await invoke('request_speech_recognition_permission')
   await refreshStatuses()
@@ -161,6 +170,7 @@ async function runPermissionWizard() {
         name: '麦克风',
         run: async () => {
           await invoke<boolean>('request_microphone_permission')
+          await invoke('open_microphone_settings')
         },
         pauseMs: 500
       })
@@ -297,6 +307,9 @@ onUnmounted(() => {
           </button>
           <button class="action-button" type="button" @click="requestMicrophone">
             请求麦克风权限
+          </button>
+          <button class="action-button ghost" type="button" @click="openMicrophoneSettings">
+            打开麦克风系统设置
           </button>
           <button class="action-button ghost" type="button" @click="requestSpeechRecognition">
             请求语音识别权限
