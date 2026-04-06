@@ -398,7 +398,7 @@ export function useSpeechOverlay() {
       if (!commitText) {
         statusMessage.value = '停止录音，正在等待最终识别结果返回。'
         pushDiagnostic('waiting for native-final after stop')
-        stopFallbackTimer = window.setTimeout(() => {
+        stopFallbackTimer = window.setTimeout(async () => {
           if (sessionPhase.value !== 'stopping') {
             return
           }
@@ -407,6 +407,7 @@ export function useSpeechOverlay() {
           shouldCommitOnEnd = false
           sessionPhase.value = 'idle'
           statusMessage.value = '停止后没有拿到有效语音结果。'
+          await hideOverlay()
         }, 2600)
         return
       }
@@ -464,12 +465,24 @@ export function useSpeechOverlay() {
       return
     }
 
+    if (sessionPhase.value === 'stopping') {
+      clearStopFallbackTimer()
+      clearStartFallbackTimer()
+      shouldCommitOnEnd = false
+      sessionPhase.value = 'idle'
+      statusMessage.value = '已结束本次语音会话。'
+      await invoke('stop_native_speech')
+      await hideOverlay()
+      return
+    }
+
     if (sessionPhase.value === 'starting') {
       clearStartFallbackTimer()
       shouldCommitOnEnd = false
       sessionPhase.value = 'idle'
       statusMessage.value = '已取消正在启动的语音识别。'
       await invoke('stop_native_speech')
+      await hideOverlay()
       return
     }
 
@@ -538,6 +551,9 @@ export function useSpeechOverlay() {
       statusMessage.value = text
         ? '录音结束，文本已保留在浮层里，等待你手动写回。'
         : '没有拿到有效语音结果。'
+      if (!text) {
+        void hideOverlay()
+      }
     })
     unlistenNativeError = await listen<{ text: string }>('speech://native-error', async (event) => {
       clearStartFallbackTimer()
