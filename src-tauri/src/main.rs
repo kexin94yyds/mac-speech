@@ -47,6 +47,26 @@ fn read_saved_overlay_position() -> Option<PhysicalPosition<i32>> {
     Some(PhysicalPosition::new(p.x, p.y))
 }
 
+/// 高于默认 `floating` / 多数应用窗口，接近菜单弹出层；仍低于屏保等系统层。
+/// 与 `alwaysOnTop` 叠加，减少全屏/多桌面下被压住的情况。
+#[cfg(target_os = "macos")]
+fn macos_bump_overlay_window_level(window: &tauri::WebviewWindow) {
+    use cocoa::appkit::NSWindow;
+    use cocoa::base::id;
+
+    let Ok(ptr) = window.ns_window() else {
+        return;
+    };
+    if ptr.is_null() {
+        return;
+    }
+    unsafe {
+        let win = ptr as id;
+        // NSPopUpMenuWindowLevel
+        NSWindow::setLevel_(win, 101);
+    }
+}
+
 fn install_overlay_position_persistence(overlay: &tauri::WebviewWindow) {
     let overlay_clone = overlay.clone();
     let _ = overlay_clone.on_window_event(move |event| {
@@ -586,6 +606,8 @@ fn reveal_overlay_anchor(window: &tauri::WebviewWindow) {
     let window_for_main_thread = window.clone();
     let _ = window.run_on_main_thread(move || {
         let _ = window_for_main_thread.set_always_on_top(true);
+        #[cfg(target_os = "macos")]
+        macos_bump_overlay_window_level(&window_for_main_thread);
         let _ = window_for_main_thread.set_visible_on_all_workspaces(true);
         let _ = window_for_main_thread.set_skip_taskbar(true);
         let _ = window_for_main_thread.set_size(Size::Logical(LogicalSize::new(
