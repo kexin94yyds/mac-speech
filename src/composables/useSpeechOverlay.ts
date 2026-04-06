@@ -377,27 +377,8 @@ export function useSpeechOverlay() {
       return
     }
 
-    // 全程静音：无 partial、无已提交文本，不必等 native-final（可能很晚才到或不到），直接收口并隐藏浮层
-    const silentSoFar =
-      commitOnEnd &&
-      !immediateCommitText &&
-      !(partialTranscript.value || '').trim()
-    if (silentSoFar) {
-      shouldCommitOnEnd = false
-      sessionPhase.value = 'stopping'
-      statusMessage.value = '正在结束…'
-      void (async () => {
-        await invoke('stop_native_speech')
-        if (sessionPhase.value !== 'stopping') {
-          return
-        }
-        shouldCommitOnEnd = false
-        sessionPhase.value = 'idle'
-        statusMessage.value = '已结束（未检测到语音）。'
-        await hideOverlay()
-      })()
-      return
-    }
+    // 不在此处做「无 partial = 静音」的快速收口：部分环境下识别结果只出现在 native-final、全程无 partial，
+    // 会误判为静音并提前 hide，导致永远不写回（回归 3371a92）。
 
     shouldCommitOnEnd = commitOnEnd
     sessionPhase.value = 'stopping'
