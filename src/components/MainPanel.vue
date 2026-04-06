@@ -1,6 +1,15 @@
 <script setup lang="ts">
-import { ref, shallowRef, markRaw } from 'vue'
-import SidebarNavIcon, { type NavIconName } from './SidebarNavIcon.vue'
+import type { Component } from 'vue'
+import { markRaw, ref, shallowRef } from 'vue'
+import {
+  BookText,
+  HelpCircle,
+  History,
+  LayoutDashboard,
+  Mic,
+  Settings,
+  User,
+} from 'lucide-vue-next'
 import OverviewPage from './pages/OverviewPage.vue'
 import GeneralPage from './pages/GeneralPage.vue'
 import SpeechPage from './pages/SpeechPage.vue'
@@ -9,21 +18,22 @@ import HistoryPage from './pages/HistoryPage.vue'
 import AccountPage from './pages/AccountPage.vue'
 import HelpPage from './pages/HelpPage.vue'
 
+/** 与 `iterate-speech.zip` 原型（lucide-react）同一套图标 */
 interface NavItem {
   id: string
   label: string
-  icon: NavIconName
+  icon: Component
   component: ReturnType<typeof markRaw>
 }
 
 const navItems: NavItem[] = [
-  { id: 'overview', label: '总览', icon: 'overview', component: markRaw(OverviewPage) },
-  { id: 'general', label: '通用', icon: 'general', component: markRaw(GeneralPage) },
-  { id: 'speech', label: '语音', icon: 'speech', component: markRaw(SpeechPage) },
-  { id: 'dictionary', label: '词典', icon: 'dictionary', component: markRaw(DictionaryPage) },
-  { id: 'history', label: '历史', icon: 'history', component: markRaw(HistoryPage) },
-  { id: 'account', label: '账户', icon: 'account', component: markRaw(AccountPage) },
-  { id: 'help', label: '帮助', icon: 'help', component: markRaw(HelpPage) },
+  { id: 'overview', label: '总览', icon: markRaw(LayoutDashboard), component: markRaw(OverviewPage) },
+  { id: 'general', label: '通用', icon: markRaw(Settings), component: markRaw(GeneralPage) },
+  { id: 'speech', label: '语音', icon: markRaw(Mic), component: markRaw(SpeechPage) },
+  { id: 'dictionary', label: '词典', icon: markRaw(BookText), component: markRaw(DictionaryPage) },
+  { id: 'history', label: '历史', icon: markRaw(History), component: markRaw(HistoryPage) },
+  { id: 'account', label: '账户', icon: markRaw(User), component: markRaw(AccountPage) },
+  { id: 'help', label: '帮助', icon: markRaw(HelpCircle), component: markRaw(HelpPage) },
 ]
 
 const activeId = ref('overview')
@@ -37,7 +47,6 @@ function navigate(item: NavItem) {
 
 <template>
   <main class="shell">
-    <!-- 侧栏 -->
     <aside class="sidebar">
       <div class="sidebar-header">
         <div class="logo-wave">
@@ -54,7 +63,14 @@ function navigate(item: NavItem) {
           :class="{ active: activeId === item.id }"
           @click="navigate(item)"
         >
-          <span class="nav-icon-wrap"><SidebarNavIcon :name="item.icon" /></span>
+          <span class="nav-icon-wrap">
+            <component
+              :is="item.icon"
+              :size="20"
+              :stroke-width="1.65"
+              class="nav-lucide"
+            />
+          </span>
           <span class="nav-label">{{ item.label }}</span>
         </button>
       </nav>
@@ -64,7 +80,6 @@ function navigate(item: NavItem) {
       </div>
     </aside>
 
-    <!-- 内容区 -->
     <section class="content">
       <component :is="activeComponent" />
     </section>
@@ -98,7 +113,6 @@ function navigate(item: NavItem) {
   overflow: hidden;
 }
 
-/* ---- 侧栏 ---- */
 .sidebar {
   width: 200px;
   flex-shrink: 0;
@@ -192,6 +206,10 @@ function navigate(item: NavItem) {
   color: rgba(84, 62, 49, 0.42);
 }
 
+.nav-lucide {
+  flex-shrink: 0;
+}
+
 .nav-item:hover .nav-icon-wrap {
   color: rgba(56, 36, 24, 0.72);
 }
@@ -211,7 +229,6 @@ function navigate(item: NavItem) {
   color: rgba(84, 62, 49, 0.38);
 }
 
-/* ---- 内容区 ---- */
 .content {
   flex: 1;
   padding: 28px 32px;
