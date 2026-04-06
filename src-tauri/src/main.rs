@@ -23,8 +23,8 @@ const OWN_BUNDLE_ID: &str = "xin.iterate.speech";
 static LAST_TARGET_APP_BUNDLE_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 /// 仅包住底部波浪 + 少量边距，避免大块透明区在部分机型上显成「白方框」。
-const ANCHOR_WIDTH: f64 = 160.0;
-const ANCHOR_HEIGHT: f64 = 56.0;
+const ANCHOR_WIDTH: f64 = 96.0;
+const ANCHOR_HEIGHT: f64 = 48.0;
 const ANCHOR_BOTTOM_MARGIN: f64 = 28.0;
 
 #[derive(Debug, Serialize, Deserialize)]

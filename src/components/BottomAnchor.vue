@@ -88,11 +88,10 @@ onBeforeUnmount(() => {
   background: transparent;
   border: none;
   box-shadow: none;
-  filter: drop-shadow(0 3px 10px rgba(59, 37, 18, 0.22));
+  /* 不用 drop-shadow，避免在透明 WebView 上像一圈浅色外框 */
   transition:
     transform 140ms ease,
-    opacity 140ms ease,
-    filter 140ms ease;
+    opacity 140ms ease;
 }
 
 .wave-anchor.idle {
@@ -100,7 +99,7 @@ onBeforeUnmount(() => {
 }
 
 .wave-anchor.active {
-  filter: drop-shadow(0 4px 14px rgba(255, 120, 48, 0.35));
+  opacity: 1;
 }
 
 .wave-anchor span {
