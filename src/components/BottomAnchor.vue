@@ -105,7 +105,7 @@ onBeforeUnmount(() => {
 .wave-anchor span {
   width: 3px;
   border-radius: 999px;
-  background: linear-gradient(180deg, #a890e8, #6b4aac);
+  background: linear-gradient(180deg, #ffc883, #ff8e4c);
   transform-origin: center;
   animation: breathe 1.05s ease-in-out infinite;
 }

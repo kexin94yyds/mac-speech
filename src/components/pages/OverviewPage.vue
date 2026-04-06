@@ -325,11 +325,11 @@ onUnmounted(() => {
 
 .btn.primary {
   color: #fff;
-  background: linear-gradient(135deg, #5b3ea8, #3d2a72);
-  box-shadow: 0 4px 12px rgba(61, 42, 114, 0.2);
+  background: linear-gradient(135deg, #e8a84a, #c45c18);
+  box-shadow: 0 4px 12px rgba(196, 92, 24, 0.22);
 }
 
-.btn.primary:hover { box-shadow: 0 6px 16px rgba(61, 42, 114, 0.3); }
+.btn.primary:hover { box-shadow: 0 6px 16px rgba(196, 92, 24, 0.32); }
 
 .btn.ghost {
   color: rgba(56, 36, 24, 0.82);

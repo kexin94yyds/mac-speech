@@ -215,7 +215,7 @@ function navigate(item: NavItem) {
 }
 
 .nav-item.active .nav-icon-wrap {
-  color: #5b3ea8;
+  color: #c45c18;
 }
 
 .sidebar-footer {

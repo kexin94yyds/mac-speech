@@ -70,9 +70,9 @@ const activationStatus = ref('未激活')
   border-radius: 12px;
   font-size: 15px;
   font-weight: 700;
-  color: rgba(45, 28, 72, 0.92);
-  background: linear-gradient(135deg, rgba(91, 62, 168, 0.14), rgba(61, 42, 114, 0.08));
-  border: 1px solid rgba(91, 62, 168, 0.22);
+  color: rgba(38, 24, 16, 0.88);
+  background: linear-gradient(135deg, rgba(255, 200, 131, 0.35), rgba(255, 142, 76, 0.18));
+  border: 1px solid rgba(255, 167, 80, 0.28);
 }
 
 .plan-label { margin: 0; font-size: 14px; font-weight: 500; color: rgba(38, 24, 16, 0.88); }
@@ -106,8 +106,8 @@ const activationStatus = ref('未激活')
 
 .btn.primary {
   color: #fff;
-  background: linear-gradient(135deg, #5b3ea8, #3d2a72);
-  box-shadow: 0 4px 12px rgba(61, 42, 114, 0.2);
+  background: linear-gradient(135deg, #e8a84a, #c45c18);
+  box-shadow: 0 4px 12px rgba(196, 92, 24, 0.22);
   margin-left: auto;
 }
 

@@ -104,5 +104,5 @@
 
 .about-label { margin: 0; font-size: 12px; color: rgba(84, 62, 49, 0.5); }
 .about-value { margin: 4px 0 0; font-size: 14px; font-weight: 500; color: rgba(38, 24, 16, 0.88); }
-.link { color: #5b3ea8; }
+.link { color: #c45c18; }
 </style>

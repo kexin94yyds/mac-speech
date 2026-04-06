@@ -105,7 +105,7 @@ onMounted(() => {
   color: rgba(38, 24, 16, 0.82);
   outline: none;
 }
-.input:focus { border-color: rgba(91, 62, 168, 0.4); }
+.input:focus { border-color: rgba(200, 120, 40, 0.45); }
 
 .btn {
   border: 0;
@@ -118,8 +118,8 @@ onMounted(() => {
 }
 .btn.primary {
   color: #fff;
-  background: linear-gradient(135deg, #5b3ea8, #3d2a72);
-  box-shadow: 0 4px 12px rgba(61, 42, 114, 0.2);
+  background: linear-gradient(135deg, #e8a84a, #c45c18);
+  box-shadow: 0 4px 12px rgba(196, 92, 24, 0.22);
 }
 
 .entry-row {

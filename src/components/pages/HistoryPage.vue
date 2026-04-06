@@ -119,7 +119,7 @@ onMounted(() => {
 }
 
 .history-row:active {
-  background: rgba(91, 62, 168, 0.06);
+  background: rgba(255, 180, 80, 0.08);
 }
 
 .copy-hint {
@@ -132,7 +132,7 @@ onMounted(() => {
 }
 
 .history-row:hover .copy-hint {
-  color: rgba(91, 62, 168, 0.7);
+  color: rgba(180, 100, 30, 0.75);
 }
 
 .history-main { flex: 1; }
