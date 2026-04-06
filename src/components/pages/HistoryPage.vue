@@ -1,41 +1,75 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 
 interface HistoryItem {
   id: number
   text: string
-  targetApp: string
+  target_app: string
   time: string
-  writtenBack: boolean
+  written_back: boolean
 }
 
-const items = ref<HistoryItem[]>([
-  { id: 1, text: '这是一段测试语音输入的文本示例。', targetApp: 'TextEdit', time: '刚刚', writtenBack: true },
-  { id: 2, text: '我想让它可以在任何应用里使用。', targetApp: '备忘录', time: '2 分钟前', writtenBack: true },
-  { id: 3, text: '明天下午三点开会，记得提前准备材料。', targetApp: 'Cursor', time: '5 分钟前', writtenBack: false },
-])
+const items = ref<HistoryItem[]>([])
+const loading = ref(true)
+
+async function refresh() {
+  loading.value = true
+  try {
+    items.value = await invoke<HistoryItem[]>('load_history')
+  } catch (e) {
+    console.error('load_history failed', e)
+  } finally {
+    loading.value = false
+  }
+}
+
+function relativeTime(timeStr: string): string {
+  try {
+    const d = new Date(timeStr.replace(' ', 'T'))
+    const diff = Date.now() - d.getTime()
+    if (diff < 60_000) return '刚刚'
+    if (diff < 3600_000) return `${Math.floor(diff / 60_000)} 分钟前`
+    if (diff < 86400_000) return `${Math.floor(diff / 3600_000)} 小时前`
+    return timeStr
+  } catch {
+    return timeStr
+  }
+}
 
 function copyText(text: string) {
   navigator.clipboard.writeText(text)
 }
+
+onMounted(() => {
+  void refresh()
+})
 </script>
 
 <template>
   <div class="page">
-    <h2 class="page-title">历史记录</h2>
-    <p class="page-desc">最近的语音转写结果。</p>
+    <div class="page-header">
+      <div>
+        <h2 class="page-title">历史记录</h2>
+        <p class="page-desc">语音转写结果自动保存在这里。</p>
+      </div>
+      <button class="btn ghost" @click="refresh">刷新</button>
+    </div>
 
     <section class="card">
       <h3 class="card-title">最近转写 <span class="count">{{ items.length }} 条</span></h3>
-      <div v-if="items.length === 0" class="empty">暂无转写记录。按 Fn 开始第一次语音输入。</div>
+
+      <div v-if="loading" class="empty">正在加载…</div>
+      <div v-else-if="items.length === 0" class="empty">暂无转写记录。按 Fn 开始第一次语音输入。</div>
+
       <div v-for="item in items" :key="item.id" class="history-row">
         <div class="history-main">
           <p class="history-text">{{ item.text }}</p>
           <div class="history-meta">
-            <span class="meta-app">{{ item.targetApp }}</span>
+            <span class="meta-app">{{ item.target_app }}</span>
             <span class="meta-dot">·</span>
-            <span class="meta-time">{{ item.time }}</span>
-            <span v-if="item.writtenBack" class="meta-badge ok">已写回</span>
+            <span class="meta-time">{{ relativeTime(item.time) }}</span>
+            <span v-if="item.written_back" class="meta-badge ok">已写回</span>
             <span v-else class="meta-badge pending">未写回</span>
           </div>
         </div>
@@ -43,14 +77,21 @@ function copyText(text: string) {
       </div>
     </section>
 
-    <p class="footnote">历史记录存储在本地，重启后保留。后续版本将支持搜索和筛选。</p>
+    <p class="footnote">历史记录保存在本地（最多 100 条），重启后保留。</p>
   </div>
 </template>
 
 <style scoped>
 .page { display: flex; flex-direction: column; gap: 20px; }
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
 .page-title { margin: 0; font-size: 22px; font-weight: 700; color: rgba(38, 24, 16, 0.94); }
-.page-desc { margin: 0; font-size: 14px; color: rgba(84, 62, 49, 0.7); }
+.page-desc { margin: 4px 0 0; font-size: 14px; color: rgba(84, 62, 49, 0.7); }
 .card { padding: 4px 0; border-radius: 16px; background: rgba(255, 255, 255, 0.72); border: 1px solid rgba(92, 54, 28, 0.06); overflow: hidden; }
 .card-title { margin: 0; padding: 16px 20px 8px; font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: rgba(112, 72, 46, 0.6); display: flex; align-items: baseline; gap: 8px; }
 .count { font-size: 11px; font-weight: 400; color: rgba(84, 62, 49, 0.5); }
@@ -114,6 +155,24 @@ function copyText(text: string) {
 }
 
 .btn-copy:hover { background: rgba(255, 255, 255, 1); }
+
+.btn {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 16px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn.ghost {
+  color: rgba(56, 36, 24, 0.82);
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(92, 54, 28, 0.1);
+}
+
+.btn.ghost:hover { background: rgba(255, 255, 255, 1); }
 
 .empty {
   padding: 30px 20px;

@@ -465,6 +465,9 @@ export function useSpeechOverlay() {
       sessionPhase.value = 'ready'
       statusMessage.value = '已尝试把文本写回当前聚焦输入区。'
       pushDiagnostic(`已写回：${trimmed.slice(0, 40)}`)
+      try {
+        await invoke('append_history', { text: trimmed, targetApp: '当前应用', writtenBack: true })
+      } catch { /* history is best-effort */ }
     } catch (error) {
       const message = String(error)
       if (message.includes('写回超时')) {

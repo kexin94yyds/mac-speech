@@ -647,6 +647,70 @@ fn ensure_overlay_window(app: &tauri::AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+// ---- History persistence ----
+
+fn history_file_path() -> PathBuf {
+    let base = dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("iterate-speech");
+    let _ = std::fs::create_dir_all(&base);
+    base.join("history.json")
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct HistoryEntry {
+    id: u64,
+    text: String,
+    target_app: String,
+    time: String,
+    written_back: bool,
+}
+
+#[tauri::command]
+fn append_history(text: String, target_app: String, written_back: bool) -> Result<(), String> {
+    let path = history_file_path();
+    let mut entries: Vec<HistoryEntry> = if path.exists() {
+        let data = std::fs::read_to_string(&path).unwrap_or_default();
+        serde_json::from_str(&data).unwrap_or_default()
+    } else {
+        vec![]
+    };
+
+    let id = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
+
+    let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+
+    entries.insert(0, HistoryEntry {
+        id,
+        text,
+        target_app,
+        time: now,
+        written_back,
+    });
+
+    if entries.len() > 100 {
+        entries.truncate(100);
+    }
+
+    let json = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
+    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn load_history() -> Result<Vec<HistoryEntry>, String> {
+    let path = history_file_path();
+    if !path.exists() {
+        return Ok(vec![]);
+    }
+    let data = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let entries: Vec<HistoryEntry> = serde_json::from_str(&data).unwrap_or_default();
+    Ok(entries)
+}
+
 fn reveal_main_window(app: &tauri::AppHandle) -> Result<(), String> {
     let Some(window) = app.get_webview_window("main") else {
         return Err("main window not found".to_string());
@@ -709,7 +773,9 @@ fn main() {
             start_native_speech,
             stop_native_speech,
             debug_log,
-            paste_text
+            paste_text,
+            append_history,
+            load_history
         ])
         .run(tauri::generate_context!())
         .expect("failed to run iterate-speech");
