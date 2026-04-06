@@ -711,6 +711,88 @@ fn load_history() -> Result<Vec<HistoryEntry>, String> {
     Ok(entries)
 }
 
+// ---- Dictionary persistence ----
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DictEntry {
+    id: u64,
+    word: String,
+    replacement: String,
+}
+
+fn dictionary_file_path() -> PathBuf {
+    let base = dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("iterate-speech");
+    let _ = std::fs::create_dir_all(&base);
+    base.join("dictionary.json")
+}
+
+#[tauri::command]
+fn save_dictionary(entries: Vec<DictEntry>) -> Result<(), String> {
+    let path = dictionary_file_path();
+    let json = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
+    std::fs::write(&path, json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn load_dictionary() -> Result<Vec<DictEntry>, String> {
+    let path = dictionary_file_path();
+    if !path.exists() {
+        return Ok(vec![]);
+    }
+    let data = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    Ok(serde_json::from_str(&data).unwrap_or_default())
+}
+
+// ---- General settings persistence ----
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct GeneralSettings {
+    launch_at_login: bool,
+    show_in_menu_bar: bool,
+    show_in_dock: bool,
+    hotkey: String,
+    menu_bar_action: String,
+}
+
+impl Default for GeneralSettings {
+    fn default() -> Self {
+        Self {
+            launch_at_login: false,
+            show_in_menu_bar: true,
+            show_in_dock: true,
+            hotkey: "Fn".into(),
+            menu_bar_action: "toggle".into(),
+        }
+    }
+}
+
+fn general_settings_path() -> PathBuf {
+    let base = dirs::data_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("iterate-speech");
+    let _ = std::fs::create_dir_all(&base);
+    base.join("general_settings.json")
+}
+
+#[tauri::command]
+fn save_general_settings(settings: GeneralSettings) -> Result<(), String> {
+    let path = general_settings_path();
+    let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    std::fs::write(&path, json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn load_general_settings() -> Result<GeneralSettings, String> {
+    let path = general_settings_path();
+    if !path.exists() {
+        return Ok(GeneralSettings::default());
+    }
+    let data = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    Ok(serde_json::from_str(&data).unwrap_or_default())
+}
+
 fn reveal_main_window(app: &tauri::AppHandle) -> Result<(), String> {
     let Some(window) = app.get_webview_window("main") else {
         return Err("main window not found".to_string());
@@ -775,7 +857,11 @@ fn main() {
             debug_log,
             paste_text,
             append_history,
-            load_history
+            load_history,
+            save_dictionary,
+            load_dictionary,
+            save_general_settings,
+            load_general_settings
         ])
         .run(tauri::generate_context!())
         .expect("failed to run iterate-speech");

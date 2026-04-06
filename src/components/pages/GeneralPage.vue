@@ -1,11 +1,57 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 
 const launchAtLogin = ref(false)
 const showInMenuBar = ref(true)
 const showInDock = ref(true)
 const hotkey = ref('Fn')
 const menuBarAction = ref('toggle')
+const loaded = ref(false)
+
+async function loadSettings() {
+  try {
+    const s = await invoke<{
+      launch_at_login: boolean
+      show_in_menu_bar: boolean
+      show_in_dock: boolean
+      hotkey: string
+      menu_bar_action: string
+    }>('load_general_settings')
+    launchAtLogin.value = s.launch_at_login
+    showInMenuBar.value = s.show_in_menu_bar
+    showInDock.value = s.show_in_dock
+    hotkey.value = s.hotkey
+    menuBarAction.value = s.menu_bar_action
+  } catch (e) {
+    console.error('load_general_settings failed', e)
+  } finally {
+    loaded.value = true
+  }
+}
+
+async function persist() {
+  if (!loaded.value) return
+  try {
+    await invoke('save_general_settings', {
+      settings: {
+        launch_at_login: launchAtLogin.value,
+        show_in_menu_bar: showInMenuBar.value,
+        show_in_dock: showInDock.value,
+        hotkey: hotkey.value,
+        menu_bar_action: menuBarAction.value,
+      },
+    })
+  } catch (e) {
+    console.error('save_general_settings failed', e)
+  }
+}
+
+onMounted(() => { void loadSettings() })
+
+watch([launchAtLogin, showInMenuBar, showInDock, hotkey, menuBarAction], () => {
+  void persist()
+})
 </script>
 
 <template>
@@ -72,7 +118,7 @@ const menuBarAction = ref('toggle')
       </div>
     </section>
 
-    <p class="footnote">部分设置需要重启应用后生效。快捷键后续版本将支持自定义组合键。</p>
+    <p class="footnote">设置自动保存。快捷键后续版本将支持自定义组合键。</p>
   </div>
 </template>
 
