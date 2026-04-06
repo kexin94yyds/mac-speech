@@ -376,6 +376,28 @@ export function useSpeechOverlay() {
       return
     }
 
+    // 全程静音：无 partial、无已提交文本，不必等 native-final（可能很晚才到或不到），直接收口并隐藏浮层
+    const silentSoFar =
+      commitOnEnd &&
+      !immediateCommitText &&
+      !(partialTranscript.value || '').trim()
+    if (silentSoFar) {
+      shouldCommitOnEnd = false
+      sessionPhase.value = 'stopping'
+      statusMessage.value = '正在结束…'
+      void (async () => {
+        await invoke('stop_native_speech')
+        if (sessionPhase.value !== 'stopping') {
+          return
+        }
+        shouldCommitOnEnd = false
+        sessionPhase.value = 'idle'
+        statusMessage.value = '已结束（未检测到语音）。'
+        await hideOverlay()
+      })()
+      return
+    }
+
     shouldCommitOnEnd = commitOnEnd
     sessionPhase.value = 'stopping'
     statusMessage.value = commitOnEnd
@@ -520,6 +542,12 @@ export function useSpeechOverlay() {
       },
     )
     unlistenNativeStarted = await listen<{ text: string }>('speech://native-started', async (event) => {
+      if (sessionPhase.value !== 'starting') {
+        if (sessionPhase.value === 'idle') {
+          void invoke('stop_native_speech')
+        }
+        return
+      }
       clearStartFallbackTimer()
       clearStopFallbackTimer()
       sessionPhase.value = 'listening'
@@ -537,6 +565,10 @@ export function useSpeechOverlay() {
       const text = (event.payload.text || '').trim()
       transcript.value = text
       partialTranscript.value = ''
+
+      if (sessionPhase.value === 'idle' && !text) {
+        return
+      }
 
       if (shouldCommitOnEnd && text) {
         shouldCommitOnEnd = false
