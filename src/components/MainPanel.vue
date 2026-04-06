@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, shallowRef, markRaw } from 'vue'
+import SidebarNavIcon, { type NavIconName } from './SidebarNavIcon.vue'
 import OverviewPage from './pages/OverviewPage.vue'
 import GeneralPage from './pages/GeneralPage.vue'
 import SpeechPage from './pages/SpeechPage.vue'
@@ -11,18 +12,18 @@ import HelpPage from './pages/HelpPage.vue'
 interface NavItem {
   id: string
   label: string
-  icon: string
+  icon: NavIconName
   component: ReturnType<typeof markRaw>
 }
 
 const navItems: NavItem[] = [
-  { id: 'overview', label: '总览', icon: '◉', component: markRaw(OverviewPage) },
-  { id: 'general', label: '通用', icon: '⚙', component: markRaw(GeneralPage) },
-  { id: 'speech', label: '语音', icon: '🎤', component: markRaw(SpeechPage) },
-  { id: 'dictionary', label: '词典', icon: '📖', component: markRaw(DictionaryPage) },
-  { id: 'history', label: '历史', icon: '📋', component: markRaw(HistoryPage) },
-  { id: 'account', label: '账户', icon: '👤', component: markRaw(AccountPage) },
-  { id: 'help', label: '帮助', icon: '?', component: markRaw(HelpPage) },
+  { id: 'overview', label: '总览', icon: 'overview', component: markRaw(OverviewPage) },
+  { id: 'general', label: '通用', icon: 'general', component: markRaw(GeneralPage) },
+  { id: 'speech', label: '语音', icon: 'speech', component: markRaw(SpeechPage) },
+  { id: 'dictionary', label: '词典', icon: 'dictionary', component: markRaw(DictionaryPage) },
+  { id: 'history', label: '历史', icon: 'history', component: markRaw(HistoryPage) },
+  { id: 'account', label: '账户', icon: 'account', component: markRaw(AccountPage) },
+  { id: 'help', label: '帮助', icon: 'help', component: markRaw(HelpPage) },
 ]
 
 const activeId = ref('overview')
@@ -53,7 +54,7 @@ function navigate(item: NavItem) {
           :class="{ active: activeId === item.id }"
           @click="navigate(item)"
         >
-          <span class="nav-icon">{{ item.icon }}</span>
+          <span class="nav-icon-wrap"><SidebarNavIcon :name="item.icon" /></span>
           <span class="nav-label">{{ item.label }}</span>
         </button>
       </nav>
@@ -183,10 +184,20 @@ function navigate(item: NavItem) {
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
 
-.nav-icon {
+.nav-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 20px;
-  text-align: center;
-  font-size: 15px;
+  color: rgba(84, 62, 49, 0.42);
+}
+
+.nav-item:hover .nav-icon-wrap {
+  color: rgba(56, 36, 24, 0.72);
+}
+
+.nav-item.active .nav-icon-wrap {
+  color: #5b3ea8;
 }
 
 .sidebar-footer {
@@ -223,7 +234,7 @@ function navigate(item: NavItem) {
   .app-name { display: none; }
   .sidebar-header { justify-content: center; padding-bottom: 16px; }
   .nav-item { justify-content: center; padding: 10px; }
-  .nav-icon { width: auto; }
+  .nav-icon-wrap { width: auto; }
   .content { padding: 20px 18px; }
 }
 </style>
