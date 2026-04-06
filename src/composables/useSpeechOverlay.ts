@@ -36,7 +36,6 @@ export function useSpeechOverlay() {
   let recordedChunks: BlobPart[] = []
   let stopFallbackTimer: number | null = null
   let startFallbackTimer: number | null = null
-  let lastToggleAt = 0
 
   async function debugLog(message: string) {
     try {
@@ -363,7 +362,6 @@ export function useSpeechOverlay() {
       sessionPhase.value = 'ready'
       statusMessage.value = '已用当前识别结果直接收口，不再等待 final。'
       void invoke('stop_native_speech')
-      stopMeter()
       void commitTextToTarget(immediateCommitText)
       return
     }
@@ -399,7 +397,6 @@ export function useSpeechOverlay() {
           shouldCommitOnEnd = false
           sessionPhase.value = 'idle'
           statusMessage.value = '停止后没有拿到有效语音结果。'
-          stopMeter()
         }, 2600)
         return
       }
@@ -407,7 +404,6 @@ export function useSpeechOverlay() {
       shouldCommitOnEnd = false
       sessionPhase.value = 'ready'
       statusMessage.value = '停止信号已发出，已用当前识别结果完成回写流程。'
-      stopMeter()
     }, 1800)
   }
 
@@ -427,8 +423,7 @@ export function useSpeechOverlay() {
 
     try {
       await hideOverlay()
-      await new Promise((resolve) => window.setTimeout(resolve, 220))
-      await invoke('repin_paste_target_from_frontmost')
+      await new Promise((resolve) => window.setTimeout(resolve, 90))
       await invoke('paste_text', { text: trimmed })
       lastCommittedText.value = trimmed
       manualDraft.value = ''
@@ -450,39 +445,21 @@ export function useSpeechOverlay() {
       sessionPhase.value = 'error'
       statusMessage.value = `写回失败：${message}`
       pushDiagnostic(statusMessage.value)
-      // 先别关浮层：否则看不到原因；语音链路自己的 error 仍会在别处 hide
-      await invoke('reveal_overlay_window').catch(() => {})
     }
   }
 
   async function handleGlobalToggle(skipTargetCapture = false) {
-    const now = Date.now()
-    if (now - lastToggleAt < 320) {
-      await debugLog(
-        `toggle ignored by debounce phase=${sessionPhase.value} deltaMs=${now - lastToggleAt}`,
-      )
-      return
-    }
-    lastToggleAt = now
-
     if (sessionPhase.value === 'listening') {
       stopListening(true)
-      return
-    }
-
-    if (sessionPhase.value === 'stopping') {
-      await debugLog('toggle ignored while stopping')
       return
     }
 
     if (sessionPhase.value === 'starting') {
       clearStartFallbackTimer()
       shouldCommitOnEnd = false
-      stopMeter()
       sessionPhase.value = 'idle'
       statusMessage.value = '已取消正在启动的语音识别。'
       await invoke('stop_native_speech')
-      await hideOverlay()
       return
     }
 
@@ -526,12 +503,6 @@ export function useSpeechOverlay() {
       const recognitionMode = event.payload.text === 'on-device' ? '本地实时识别' : '系统识别'
       statusMessage.value = `正在录音（${recognitionMode}），实时结果会逐步显示；再次按 Fn 会停止并尝试写回。`
       pushDiagnostic(`native speech started: ${recognitionMode}`)
-      try {
-        // 同时录制本地音频，便于系统识别失败时回退到 Whisper。
-        await ensureMeter(true)
-      } catch (error) {
-        pushDiagnostic(`电平条不可用（不影响识别）：${String(error)}`)
-      }
     })
     unlistenNativePartial = await listen<{ text: string }>('speech://native-partial', async (event) => {
       clearStartFallbackTimer()
@@ -548,7 +519,6 @@ export function useSpeechOverlay() {
         shouldCommitOnEnd = false
         sessionPhase.value = 'ready'
         statusMessage.value = '已拿到最终识别结果，正在尝试写回当前聚焦输入区。'
-        stopMeter()
         void commitTextToTarget(text)
         return
       }
@@ -558,30 +528,12 @@ export function useSpeechOverlay() {
       statusMessage.value = text
         ? '录音结束，文本已保留在浮层里，等待你手动写回。'
         : '没有拿到有效语音结果。'
-      stopMeter()
     })
     unlistenNativeError = await listen<{ text: string }>('speech://native-error', async (event) => {
       clearStartFallbackTimer()
       clearStopFallbackTimer()
-      const errorText = event.payload.text || '未知错误'
-      const canFallback =
-        shouldCommitOnEnd &&
-        (errorText.includes('No speech detected') || errorText.includes('no speech'))
-      if (canFallback) {
-        sessionPhase.value = 'stopping'
-        statusMessage.value = '系统识别未返回文本，正在回退本地 Whisper。'
-        pushDiagnostic(`native failed, fallback whisper: ${errorText}`)
-        shouldCommitOnEnd = true
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-          mediaRecorder.stop()
-          return
-        }
-        await finalizeLocalWhisper()
-        return
-      }
-
       sessionPhase.value = 'error'
-      statusMessage.value = `语音识别失败：${errorText}`
+      statusMessage.value = `语音识别失败：${event.payload.text || '未知错误'}`
       pushDiagnostic(statusMessage.value)
       shouldCommitOnEnd = false
       stopMeter()

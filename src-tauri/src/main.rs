@@ -1,12 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::ffi::{c_char, c_void, CStr};
-use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::{
     Emitter, LogicalSize, Manager, PhysicalPosition, Position, Size, WebviewWindowBuilder,
     WindowEvent,
@@ -22,63 +21,8 @@ const NATIVE_ERROR_EVENT: &str = "speech://native-error";
 const OWN_BUNDLE_ID: &str = "xin.iterate.speech";
 static LAST_TARGET_APP_BUNDLE_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
-
-fn persist_debug_log(message: &str) {
-    use std::fs::OpenOptions;
-    use std::io::Write;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    let ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    if let Ok(mut file) = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/tmp/iterate-speech-debug.log")
-    {
-        let _ = writeln!(file, "{ts} {message}");
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct OverlayPositionFile {
-    x: i32,
-    y: i32,
-}
-
-fn overlay_position_path(app: &tauri::AppHandle) -> Option<PathBuf> {
-    let dir = app.path().app_config_dir().ok()?;
-    std::fs::create_dir_all(&dir).ok()?;
-    Some(dir.join("overlay_position.json"))
-}
-
-fn read_saved_overlay_position(app: &tauri::AppHandle) -> Option<PhysicalPosition<i32>> {
-    let path = overlay_position_path(app)?;
-    let data = std::fs::read_to_string(path).ok()?;
-    let p: OverlayPositionFile = serde_json::from_str(&data).ok()?;
-    Some(PhysicalPosition::new(p.x, p.y))
-}
-
-fn install_overlay_position_persistence(overlay: &tauri::WebviewWindow, app: tauri::AppHandle) {
-    let app_for_save = app.clone();
-    let overlay_clone = overlay.clone();
-    let _ = overlay_clone.on_window_event(move |event| {
-        let WindowEvent::Moved(pos) = event else {
-            return;
-        };
-        let Some(path) = overlay_position_path(&app_for_save) else {
-            return;
-        };
-        let payload = OverlayPositionFile { x: pos.x, y: pos.y };
-        if let Ok(bytes) = serde_json::to_vec(&payload) {
-            let _ = std::fs::write(path, bytes);
-        }
-    });
-}
-
-const ANCHOR_WIDTH: f64 = 288.0;
-const ANCHOR_HEIGHT: f64 = 118.0;
+const ANCHOR_WIDTH: f64 = 420.0;
+const ANCHOR_HEIGHT: f64 = 120.0;
 const ANCHOR_BOTTOM_MARGIN: f64 = 28.0;
 
 #[derive(Clone, Serialize)]
@@ -138,11 +82,6 @@ extern "C" fn native_speech_callback(
         _ => return,
     };
 
-    if event_type == "error" {
-        eprintln!("[iterate-speech] native speech error: {text}");
-        persist_debug_log(&format!("[iterate-speech] native speech error: {text}"));
-    }
-
     let _ = app.emit(
         event_name,
         SpeechBridgePayload {
@@ -154,15 +93,12 @@ extern "C" fn native_speech_callback(
 #[cfg(target_os = "macos")]
 mod macos {
     use super::{TogglePayload, GLOBAL_SHORTCUT, TOGGLE_EVENT};
-    use cocoa::base::{id, nil, BOOL, YES};
-    use cocoa::foundation::{NSString, NSUInteger};
     use core_foundation::runloop::CFRunLoop;
     use core_graphics::event::{
         CallbackResult, CGEvent, CGEventFlags, CGEventTap, CGEventTapLocation,
         CGEventTapOptions, CGEventTapPlacement, CGEventType, CGKeyCode, EventField,
     };
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
-    use objc::{class, msg_send, sel, sel_impl};
     use std::sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -187,9 +123,8 @@ mod macos {
             .map_err(|_| "failed to create Cmd+V key up event")?;
         key_up.set_flags(CGEventFlags::CGEventFlagCommand);
 
-        // 与 ClipBook / PAT-2026-077 一致：AnnotatedSession 比 HID 更易被前台文本框接收
-        key_down.post(CGEventTapLocation::AnnotatedSession);
-        key_up.post(CGEventTapLocation::AnnotatedSession);
+        key_down.post(CGEventTapLocation::HID);
+        key_up.post(CGEventTapLocation::HID);
         thread::sleep(Duration::from_millis(60));
 
         Ok(())
@@ -267,54 +202,16 @@ mod macos {
     }
 
     pub fn activate_app(bundle_id: &str) -> Result<(), String> {
-        unsafe {
-            let ns_bundle_id = NSString::alloc(nil).init_str(bundle_id);
-            let running_apps: id =
-                msg_send![class!(NSRunningApplication), runningApplicationsWithBundleIdentifier: ns_bundle_id];
-            let count: NSUInteger = msg_send![running_apps, count];
-
-            if count > 0 {
-                let target_app: id = msg_send![running_apps, objectAtIndex: 0];
-                // NSApplicationActivateIgnoringOtherApps = 1 << 1 = 2
-                let activated: BOOL = msg_send![target_app, activateWithOptions: 2usize];
-                if activated == YES {
-                    return Ok(());
-                }
-                eprintln!(
-                    "[iterate-speech] native activateWithOptions returned false bundle_id={bundle_id}, fallback to osascript"
-                );
-            } else {
-                eprintln!(
-                    "[iterate-speech] NSRunningApplication not found for bundle_id={bundle_id}, fallback to osascript"
-                );
-            }
-        }
-
         let script = format!("tell application id \"{bundle_id}\" to activate");
         let status = Command::new("osascript")
             .args(["-e", &script])
             .status()
             .map_err(|error| format!("failed to activate macOS app {bundle_id}: {error}"))?;
 
-        if !status.success() {
-            return Err(format!(
-                "activating macOS app {bundle_id} returned a non-zero exit code"
-            ));
-        }
-
-        Ok(())
-    }
-
-    pub fn wait_frontmost_bundle(target_bundle_id: &str, timeout_ms: u64) -> Result<bool, String> {
-        let start = std::time::Instant::now();
-        loop {
-            if frontmost_app_bundle_id()? == target_bundle_id {
-                return Ok(true);
-            }
-            if start.elapsed() >= Duration::from_millis(timeout_ms) {
-                return Ok(false);
-            }
-            thread::sleep(Duration::from_millis(60));
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!("activating macOS app {bundle_id} returned a non-zero exit code"))
         }
     }
 
@@ -491,73 +388,23 @@ fn request_input_monitoring_permission() -> Result<(), String> {
 fn paste_text(text: String, app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        let stored_target = last_target_app_bundle_id()
-            .lock()
-            .map_err(|_| "failed to lock target app bundle id store".to_string())?
-            .clone();
-
         let previous = app.clipboard().read_text().ok();
 
         app.clipboard()
             .write_text(&text)
             .map_err(|error| format!("failed to write transcript to clipboard: {error}"))?;
 
-        match stored_target {
-            Some(bundle_id) if bundle_id != OWN_BUNDLE_ID => {
-                eprintln!(
-                    "[iterate-speech] paste_text target_bundle={bundle_id} chars={}",
-                    text.chars().count()
-                );
-                persist_debug_log(&format!(
-                    "[iterate-speech] paste_text target_bundle={bundle_id} chars={}",
-                    text.chars().count()
-                ));
-                macos::activate_app(&bundle_id)?;
-                let switched = macos::wait_frontmost_bundle(&bundle_id, 1200)?;
-                if !switched {
-                    eprintln!(
-                        "[iterate-speech] paste_text activate not frontmost yet, retry target_bundle={bundle_id}"
-                    );
-                    persist_debug_log(&format!(
-                        "[iterate-speech] paste_text activate retry target_bundle={bundle_id}"
-                    ));
-                    macos::activate_app(&bundle_id)?;
-                    let switched_retry = macos::wait_frontmost_bundle(&bundle_id, 900)?;
-                    if !switched_retry {
-                        let current = macos::frontmost_app_bundle_id().unwrap_or_else(|_| "<unknown>".to_string());
-                        eprintln!(
-                            "[iterate-speech] paste_text WARNING frontmost mismatch current={current} expected={bundle_id}"
-                        );
-                        persist_debug_log(&format!(
-                            "[iterate-speech] paste_text WARNING frontmost mismatch current={current} expected={bundle_id}"
-                        ));
-                    }
-                }
-                thread::sleep(Duration::from_millis(180));
-            }
-            Some(bundle_id) => {
-                eprintln!(
-                    "[iterate-speech] paste_text skip activate stored is own bundle_id={bundle_id}"
-                );
-                persist_debug_log(&format!(
-                    "[iterate-speech] paste_text skip activate stored own bundle_id={bundle_id}"
-                ));
-                thread::sleep(Duration::from_millis(120));
-            }
-            None => {
-                eprintln!(
-                    "[iterate-speech] paste_text WARNING no stored target; Cmd+V goes to current frontmost (不稳定，建议先在目标输入框按第一次 Fn)"
-                );
-                persist_debug_log(
-                    "[iterate-speech] paste_text WARNING no stored target; Cmd+V goes to current frontmost",
-                );
-                thread::sleep(Duration::from_millis(160));
-            }
+        if let Some(bundle_id) = last_target_app_bundle_id()
+            .lock()
+            .map_err(|_| "failed to lock target app bundle id store".to_string())?
+            .clone()
+        {
+            macos::activate_app(&bundle_id)?;
+            thread::sleep(Duration::from_millis(180));
         }
 
-        thread::sleep(Duration::from_millis(90));
+        thread::sleep(Duration::from_millis(70));
         macos::simulate_paste()?;
-        persist_debug_log("[iterate-speech] paste_text simulate_paste dispatched");
 
         if let Some(previous) = previous {
             thread::sleep(Duration::from_millis(120));
@@ -586,9 +433,6 @@ fn capture_frontmost_target_app() -> Result<(), String> {
             eprintln!(
                 "[iterate-speech] capture_frontmost_target_app skip own bundle_id={bundle_id}"
             );
-            persist_debug_log(&format!(
-                "[iterate-speech] capture_frontmost_target_app skip own bundle_id={bundle_id}"
-            ));
             return Ok(());
         }
 
@@ -596,9 +440,6 @@ fn capture_frontmost_target_app() -> Result<(), String> {
             .lock()
             .map_err(|_| "failed to lock target app bundle id store".to_string())?;
         eprintln!("[iterate-speech] capture_frontmost_target_app target={bundle_id}");
-        persist_debug_log(&format!(
-            "[iterate-speech] capture_frontmost_target_app target={bundle_id}"
-        ));
         *guard = Some(bundle_id);
         Ok(())
     }
@@ -613,50 +454,9 @@ fn remember_frontmost_app() -> Result<(), String> {
     capture_frontmost_target_app()
 }
 
-/// 浮层隐藏、焦点回落后再次采样前台，刷新写回目标（非自家 bundle 才覆盖）。
-#[tauri::command]
-fn repin_paste_target_from_frontmost() -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        let mut bundle_id = macos::frontmost_app_bundle_id()?;
-        if bundle_id == OWN_BUNDLE_ID {
-            for _ in 0..10 {
-                thread::sleep(Duration::from_millis(60));
-                bundle_id = macos::frontmost_app_bundle_id()?;
-                if bundle_id != OWN_BUNDLE_ID {
-                    break;
-                }
-            }
-        }
-        if bundle_id == OWN_BUNDLE_ID {
-            eprintln!(
-                "[iterate-speech] repin_paste_target_from_frontmost skip own bundle_id={bundle_id} (frontmost did not settle)"
-            );
-            persist_debug_log(&format!(
-                "[iterate-speech] repin_paste_target_from_frontmost skip own bundle_id={bundle_id}"
-            ));
-            return Ok(());
-        }
-        let mut guard = last_target_app_bundle_id()
-            .lock()
-            .map_err(|_| "failed to lock target app bundle id store".to_string())?;
-        eprintln!("[iterate-speech] repin_paste_target_from_frontmost target={bundle_id}");
-        persist_debug_log(&format!(
-            "[iterate-speech] repin_paste_target_from_frontmost target={bundle_id}"
-        ));
-        *guard = Some(bundle_id);
-        Ok(())
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        Ok(())
-    }
-}
-
 #[tauri::command]
 fn start_native_speech() -> Result<(), String> {
     eprintln!("[iterate-speech] start_native_speech invoked");
-    persist_debug_log("[iterate-speech] start_native_speech invoked");
     #[cfg(target_os = "macos")]
     unsafe {
         // Always tear down any in-flight recognition before starting a new session.
@@ -670,7 +470,6 @@ fn start_native_speech() -> Result<(), String> {
 #[tauri::command]
 fn stop_native_speech() -> Result<(), String> {
     eprintln!("[iterate-speech] stop_native_speech invoked");
-    persist_debug_log("[iterate-speech] stop_native_speech invoked");
     #[cfg(target_os = "macos")]
     unsafe {
         speech_bridge_stop();
@@ -681,7 +480,6 @@ fn stop_native_speech() -> Result<(), String> {
 #[tauri::command]
 fn debug_log(message: String) {
     eprintln!("[iterate-speech][web] {message}");
-    persist_debug_log(&format!("[iterate-speech][web] {message}"));
 }
 
 #[tauri::command]
@@ -711,20 +509,15 @@ fn reveal_overlay_anchor(window: &tauri::WebviewWindow) {
             ANCHOR_HEIGHT,
         )));
 
-        if let Some(app) = APP_HANDLE.get() {
-            if let Some(saved) = read_saved_overlay_position(app) {
-                let _ = window_for_main_thread.set_position(Position::Physical(saved));
-            } else if let Ok(Some(monitor)) = window_for_main_thread.current_monitor() {
-                let monitor_size = monitor.size();
-                let scale_factor = monitor.scale_factor();
-                let x = ((monitor_size.width as f64 - ANCHOR_WIDTH * scale_factor) / 2.0).round() as i32;
-                let y = (monitor_size.height as f64
-                    - ANCHOR_HEIGHT * scale_factor
-                    - ANCHOR_BOTTOM_MARGIN * scale_factor)
+        if let Ok(Some(monitor)) = window_for_main_thread.current_monitor() {
+            let monitor_size = monitor.size();
+            let scale_factor = monitor.scale_factor();
+            let x = ((monitor_size.width as f64 - ANCHOR_WIDTH * scale_factor) / 2.0).round() as i32;
+            let y =
+                (monitor_size.height as f64 - ANCHOR_HEIGHT * scale_factor - ANCHOR_BOTTOM_MARGIN * scale_factor)
                     .round() as i32;
-                let _ = window_for_main_thread
-                    .set_position(Position::Physical(PhysicalPosition::new(x, y)));
-            }
+            let _ =
+                window_for_main_thread.set_position(Position::Physical(PhysicalPosition::new(x, y)));
         }
 
         eprintln!("[iterate-speech] revealing bottom anchor");
@@ -799,9 +592,6 @@ fn main() {
             eprintln!("[iterate-speech] app setup begin");
             let _ = APP_HANDLE.set(app.handle().clone());
             ensure_overlay_window(&app.handle())?;
-            if let Some(overlay) = app.get_webview_window("overlay") {
-                install_overlay_position_persistence(&overlay, app.handle().clone());
-            }
             install_main_window_close_guard(&app.handle());
             // Creating the overlay webview can leave the main window de-emphasized; force it
             // forward so first launch reliably shows the permission hub.
@@ -823,7 +613,6 @@ fn main() {
             request_speech_recognition_permission,
             request_input_monitoring_permission,
             remember_frontmost_app,
-            repin_paste_target_from_frontmost,
             show_main_window,
             reveal_overlay_window,
             start_native_speech,

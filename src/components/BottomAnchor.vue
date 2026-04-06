@@ -18,29 +18,6 @@ const hasTranscript = computed(() =>
   )
 )
 
-/** Fn 会话中只展示波浪，不铺大段说明文案 */
-const isWaveOnlySession = computed(
-  () =>
-    overlay.sessionPhase.value === 'starting' ||
-    overlay.sessionPhase.value === 'listening' ||
-    overlay.sessionPhase.value === 'stopping',
-)
-
-/** 对齐早期 hui「能试光标写回」：error 态保留一行说明，便于对照状态机 */
-const showErrorCaption = computed(() => overlay.sessionPhase.value === 'error')
-
-/** 对齐 iOS `TypelessStyleMicLevelBar`：窄轨 + 黑填充，宽度随 micLevel 变 */
-const levelBarFillPx = computed(() => {
-  const raw = overlay.micLevel.value
-  const v = Math.min(1, Math.max(0, raw))
-  const eff = v < 0.022 ? 0 : v
-  const track = 54
-  if (eff <= 0) {
-    return 0
-  }
-  return Math.min(track, Math.max(8, track * eff))
-})
-
 onMounted(async () => {
   await overlay.initialize()
 })
@@ -52,136 +29,81 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="shell">
-    <div class="dock-stack" data-tauri-drag-region>
-      <p
-        v-if="showErrorCaption"
-        class="float-caption float-caption--err"
-      >
-        {{ overlay.statusMessage }}
-      </p>
-      <!-- 监听中：显示实时识别字（否则只有波浪，体感像「不出字」） -->
-      <p
-        v-else-if="overlay.sessionPhase === 'listening' && hasTranscript"
-        class="float-caption float-caption--live"
-      >
-        {{ overlay.displayTranscript }}
-      </p>
-      <!-- 非监听态：待写回等预览（idle / ready / stopping 等） -->
-      <p
-        v-else-if="!isWaveOnlySession && hasTranscript"
-        class="float-caption float-caption--preview"
-      >
-        {{ overlay.displayTranscript }}
-      </p>
-      <!-- iOS VoiceHalfCircleDock：录音态顶部细条电平 -->
-      <div v-if="isActive" class="level-bar-track" aria-hidden="true">
+    <section class="capsule" :class="{ active: isActive }">
+      <div class="capsule-head">
         <div
-          class="level-bar-fill"
-          :style="{ width: levelBarFillPx > 0 ? `${levelBarFillPx}px` : '0' }"
-        />
+          class="wave-anchor"
+          :class="{ active: isActive, idle: !isActive }"
+          :style="{ transform: `scale(${pulseScale})` }"
+          aria-label="speech anchor"
+        >
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <p class="phase-copy">{{ overlay.phaseLabel }}</p>
       </div>
-      <div
-        class="wave-anchor"
-        :class="{ active: isActive, idle: !isActive }"
-        :style="{ transform: `scale(${pulseScale})` }"
-        aria-label="speech anchor"
-      >
-        <span></span>
-        <span></span>
-        <span></span>
-        <span></span>
-        <span></span>
-      </div>
-    </div>
+
+      <p class="transcript-copy" :class="{ placeholder: !hasTranscript }">
+        {{ overlay.displayTranscript }}
+      </p>
+
+      <p class="status-copy">{{ overlay.statusMessage }}</p>
+    </section>
   </main>
 </template>
 
 <style scoped>
+:global(body) {
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+  font-family: "SF Pro Display", "PingFang SC", sans-serif;
+}
+
 :global(html),
 :global(body),
 :global(#app) {
-  margin: 0;
   width: 100%;
   height: 100%;
-  background: transparent !important;
-  overflow: hidden;
-  font-family: "SF Pro Display", "PingFang SC", sans-serif;
 }
 
 .shell {
   width: 100%;
   height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   background: transparent;
+}
+
+.capsule {
+  width: min(420px, calc(100vw - 20px));
+  min-height: 94px;
+  padding: 14px 16px 12px;
   box-sizing: border-box;
-  padding: 2px 4px;
+  display: grid;
+  gap: 8px;
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(255, 252, 248, 0.96), rgba(255, 245, 236, 0.92));
+  border: 1px solid rgba(255, 255, 255, 0.94);
+  box-shadow:
+    0 22px 50px rgba(79, 52, 28, 0.18),
+    0 0 0 6px rgba(255, 190, 132, 0.1);
+  transition: transform 140ms ease, box-shadow 140ms ease;
 }
 
-.dock-stack {
+.capsule.active {
+  box-shadow:
+    0 26px 58px rgba(79, 52, 28, 0.22),
+    0 0 0 7px rgba(255, 173, 111, 0.14);
+}
+
+.capsule-head {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 5px;
-  max-width: calc(100vw - 8px);
-  cursor: grab;
-}
-
-.dock-stack:active {
-  cursor: grabbing;
-}
-
-.float-caption {
-  margin: 0;
-  max-width: 200px;
-  text-align: center;
-  font-size: 10px;
-  line-height: 1.3;
-  text-shadow:
-    0 0 10px rgba(255, 255, 255, 0.95),
-    0 1px 2px rgba(255, 255, 255, 0.9);
-}
-
-.float-caption--err {
-  color: rgba(142, 48, 48, 0.95);
-  font-size: 11px;
-  line-height: 1.35;
-  max-width: 260px;
-  max-height: 5em;
-  overflow: hidden;
-}
-
-.float-caption--live {
-  color: rgba(32, 22, 14, 0.94);
-  font-size: 13px;
-  line-height: 1.35;
-  max-width: 280px;
-  max-height: 3.9em;
-  overflow: hidden;
-  word-break: break-word;
-}
-
-.float-caption--preview {
-  color: rgba(58, 35, 20, 0.9);
-  max-height: 2.6em;
-  overflow: hidden;
-  word-break: break-word;
-}
-
-.level-bar-track {
-  width: 54px;
-  height: 5px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.22);
-  overflow: hidden;
-}
-
-.level-bar-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: rgba(24, 24, 24, 0.88);
-  transition: width 70ms ease-out;
+  gap: 10px;
 }
 
 .wave-anchor {
@@ -193,15 +115,23 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   gap: 5px;
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  filter: drop-shadow(0 3px 10px rgba(59, 37, 18, 0.22));
-  transition: transform 140ms ease, opacity 140ms ease, filter 140ms ease;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.76));
+  border: 1px solid rgba(255, 255, 255, 0.94);
+  box-shadow:
+    0 12px 24px rgba(59, 37, 18, 0.1),
+    0 0 0 4px rgba(255, 173, 111, 0.08);
+  transition: transform 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
 }
 
 .wave-anchor::before {
-  display: none;
+  content: "";
+  position: absolute;
+  inset: auto 14px -8px;
+  height: 16px;
+  border-radius: 999px;
+  background: rgba(255, 170, 108, 0.2);
+  filter: blur(12px);
+  z-index: -1;
 }
 
 .wave-anchor.idle {
@@ -209,7 +139,9 @@ onBeforeUnmount(() => {
 }
 
 .wave-anchor.active {
-  filter: drop-shadow(0 4px 14px rgba(255, 120, 48, 0.35));
+  box-shadow:
+    0 16px 30px rgba(59, 37, 18, 0.16),
+    0 0 0 6px rgba(255, 173, 111, 0.12);
 }
 
 .wave-anchor span {
@@ -245,6 +177,37 @@ onBeforeUnmount(() => {
   animation-delay: -0.14s;
 }
 
+.phase-copy,
+.transcript-copy,
+.status-copy {
+  margin: 0;
+}
+
+.phase-copy {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(124, 84, 51, 0.72);
+}
+
+.transcript-copy {
+  min-height: 22px;
+  font-size: 18px;
+  line-height: 1.35;
+  color: rgba(58, 35, 20, 0.96);
+  word-break: break-word;
+}
+
+.transcript-copy.placeholder {
+  color: rgba(132, 107, 88, 0.58);
+}
+
+.status-copy {
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(120, 89, 63, 0.78);
+}
+
 @keyframes breathe {
   0%,
   100% {
@@ -259,9 +222,18 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 680px) {
+  .capsule {
+    width: calc(100vw - 16px);
+    padding: 12px 14px;
+  }
+
   .wave-anchor {
     width: 70px;
     height: 38px;
+  }
+
+  .transcript-copy {
+    font-size: 16px;
   }
 }
 </style>

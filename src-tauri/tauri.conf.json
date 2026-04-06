@@ -10,7 +10,6 @@
     "beforeBuildCommand": "npm run build"
   },
   "app": {
-    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
@@ -31,12 +30,11 @@
         "label": "overlay",
         "title": "iterate-speech-overlay",
         "url": "index.html?view=overlay",
-        "width": 288,
-        "height": 118,
+        "width": 420,
+        "height": 120,
         "resizable": false,
         "decorations": false,
         "transparent": true,
-        "shadow": false,
         "visible": false,
         "focus": false,
         "alwaysOnTop": true,
