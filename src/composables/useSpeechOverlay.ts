@@ -74,6 +74,16 @@ export function useSpeechOverlay() {
     if (lastCommittedText.value) {
       return lastCommittedText.value
     }
+    // 避免「正在监听」却仍显示「按 Fn 开始」，让人误以为只有菜单栏出现麦克风图标时才算在听。
+    if (sessionPhase.value === 'starting') {
+      return '正在连接麦克风与语音识别…'
+    }
+    if (sessionPhase.value === 'listening') {
+      return '正在聆听… 尚未识别到文字（菜单栏麦克风图标可能延迟，以本浮层为准）。'
+    }
+    if (sessionPhase.value === 'stopping') {
+      return '正在收束识别…'
+    }
     return '按 Fn 开始，或先手动输入一段文本测试写回。'
   })
 
