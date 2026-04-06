@@ -22,9 +22,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="shell">
-    <!-- 整块可拖移窗口（与 c84decc 一致）；仅保留波浪，无白底胶囊 -->
-    <div class="dock-stack" data-tauri-drag-region>
+  <!-- 铺满 96×48，整块可拖；波浪仅视觉，不抢指针事件（否则只有中间一条能拖） -->
+  <main class="shell" data-tauri-drag-region>
+    <div class="dock-stack">
       <div
         class="wave-anchor"
         :class="{ active: isActive, idle: !isActive }"
@@ -62,6 +62,12 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   padding: 0;
   margin: 0;
+  cursor: grab;
+  user-select: none;
+}
+
+.shell:active {
+  cursor: grabbing;
 }
 
 .dock-stack {
@@ -69,15 +75,12 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  cursor: grab;
-}
-
-.dock-stack:active {
-  cursor: grabbing;
+  pointer-events: none;
 }
 
 .wave-anchor {
   position: relative;
+  pointer-events: none;
   width: 78px;
   height: 42px;
   border-radius: 999px;
