@@ -21,6 +21,7 @@ export function useSpeechOverlay() {
   ])
   const micLevel = ref(0)
 
+  let visibilityRefreshHandler: (() => void) | null = null
   let unlistenToggle: (() => void) | null = null
   let unlistenNativeStarted: (() => void) | null = null
   let unlistenNativePartial: (() => void) | null = null
@@ -447,6 +448,8 @@ export function useSpeechOverlay() {
       return
     }
 
+    await refreshAccessibilityStatus()
+
     if (!permissionGranted.value) {
       sessionPhase.value = 'ready'
       statusMessage.value = '缺少辅助功能权限，当前只能保留文本，不能自动写回。'
@@ -466,7 +469,11 @@ export function useSpeechOverlay() {
       statusMessage.value = '已尝试把文本写回当前聚焦输入区。'
       pushDiagnostic(`已写回：${trimmed.slice(0, 40)}`)
       try {
-        await invoke('append_history', { text: trimmed, targetApp: '当前应用', writtenBack: true })
+        await invoke('append_history', {
+          text: trimmed,
+          target_app: '当前应用',
+          written_back: true,
+        })
       } catch { /* history is best-effort */ }
     } catch (error) {
       const message = String(error)
@@ -532,6 +539,12 @@ export function useSpeechOverlay() {
       pushDiagnostic(`输入监控权限请求失败：${String(error)}`)
     }
     statusMessage.value = '等待 Fn 唤起原生实时语音输入。'
+
+    visibilityRefreshHandler = () => {
+      if (document.visibilityState === 'visible')
+        void refreshAccessibilityStatus()
+    }
+    document.addEventListener('visibilitychange', visibilityRefreshHandler)
 
     await debugLog(`listeners attaching window=${getCurrentWindow().label}`)
     unlistenToggle = await listen<{ shortcut: string; skip_target_capture?: boolean }>(
@@ -607,6 +620,10 @@ export function useSpeechOverlay() {
   }
 
   function dispose() {
+    if (visibilityRefreshHandler) {
+      document.removeEventListener('visibilitychange', visibilityRefreshHandler)
+      visibilityRefreshHandler = null
+    }
     unlistenToggle?.()
     unlistenNativeStarted?.()
     unlistenNativePartial?.()
