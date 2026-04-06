@@ -1,11 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::ffi::{c_char, c_void, CStr};
+use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{
     Emitter, LogicalSize, Manager, PhysicalPosition, Position, Size, WebviewWindowBuilder,
     WindowEvent,
@@ -21,9 +22,46 @@ const NATIVE_ERROR_EVENT: &str = "speech://native-error";
 const OWN_BUNDLE_ID: &str = "xin.iterate.speech";
 static LAST_TARGET_APP_BUNDLE_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
-const ANCHOR_WIDTH: f64 = 420.0;
-const ANCHOR_HEIGHT: f64 = 120.0;
+/// 仅包住底部波浪 + 少量边距，避免大块透明区在部分机型上显成「白方框」。
+const ANCHOR_WIDTH: f64 = 160.0;
+const ANCHOR_HEIGHT: f64 = 56.0;
 const ANCHOR_BOTTOM_MARGIN: f64 = 28.0;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct OverlayPositionFile {
+    x: i32,
+    y: i32,
+}
+
+fn overlay_position_path() -> Option<PathBuf> {
+    let home = PathBuf::from(std::env::var_os("HOME")?);
+    let dir = home.join("Library/Application Support/iterate-speech");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir.join("overlay_position.json"))
+}
+
+fn read_saved_overlay_position() -> Option<PhysicalPosition<i32>> {
+    let path = overlay_position_path()?;
+    let data = std::fs::read_to_string(path).ok()?;
+    let p: OverlayPositionFile = serde_json::from_str(&data).ok()?;
+    Some(PhysicalPosition::new(p.x, p.y))
+}
+
+fn install_overlay_position_persistence(overlay: &tauri::WebviewWindow) {
+    let overlay_clone = overlay.clone();
+    let _ = overlay_clone.on_window_event(move |event| {
+        let WindowEvent::Moved(pos) = event else {
+            return;
+        };
+        let Some(path) = overlay_position_path() else {
+            return;
+        };
+        let payload = OverlayPositionFile { x: pos.x, y: pos.y };
+        if let Ok(bytes) = serde_json::to_vec(&payload) {
+            let _ = std::fs::write(path, bytes);
+        }
+    });
+}
 
 #[derive(Clone, Serialize)]
 struct TogglePayload {
@@ -543,7 +581,9 @@ fn reveal_overlay_anchor(window: &tauri::WebviewWindow) {
             ANCHOR_HEIGHT,
         )));
 
-        if let Ok(Some(monitor)) = window_for_main_thread.current_monitor() {
+        if let Some(saved) = read_saved_overlay_position() {
+            let _ = window_for_main_thread.set_position(Position::Physical(saved));
+        } else if let Ok(Some(monitor)) = window_for_main_thread.current_monitor() {
             let monitor_size = monitor.size();
             let scale_factor = monitor.scale_factor();
             let x = ((monitor_size.width as f64 - ANCHOR_WIDTH * scale_factor) / 2.0).round() as i32;
@@ -626,6 +666,9 @@ fn main() {
             eprintln!("[iterate-speech] app setup begin");
             let _ = APP_HANDLE.set(app.handle().clone());
             ensure_overlay_window(&app.handle())?;
+            if let Some(overlay) = app.get_webview_window("overlay") {
+                install_overlay_position_persistence(&overlay);
+            }
             install_main_window_close_guard(&app.handle());
             // Creating the overlay webview can leave the main window de-emphasized; force it
             // forward so first launch reliably shows the permission hub.

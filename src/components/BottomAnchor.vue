@@ -5,41 +5,12 @@ import { useSpeechOverlay } from '../composables/useSpeechOverlay'
 const overlay = useSpeechOverlay()
 
 const pulseScale = computed(() => 1 + overlay.micLevel.value * 0.22)
-const isActive = computed(() =>
-  overlay.sessionPhase.value === 'starting' ||
-  overlay.sessionPhase.value === 'listening' ||
-  overlay.sessionPhase.value === 'stopping'
-)
-const hasTranscript = computed(() =>
-  Boolean(
-    overlay.partialTranscript.value ||
-      overlay.transcript.value ||
-      overlay.lastCommittedText.value
-  )
-)
-
-/** Fn 会话中只展示波浪，不铺大段说明文案 */
-const isWaveOnlySession = computed(
+const isActive = computed(
   () =>
     overlay.sessionPhase.value === 'starting' ||
     overlay.sessionPhase.value === 'listening' ||
     overlay.sessionPhase.value === 'stopping',
 )
-
-/** 对齐早期 hui「能试光标写回」：error 态保留一行说明，便于对照状态机 */
-const showErrorCaption = computed(() => overlay.sessionPhase.value === 'error')
-
-/** 对齐 iOS `TypelessStyleMicLevelBar`：窄轨 + 黑填充，宽度随 micLevel 变 */
-const levelBarFillPx = computed(() => {
-  const raw = overlay.micLevel.value
-  const v = Math.min(1, Math.max(0, raw))
-  const eff = v < 0.022 ? 0 : v
-  const track = 54
-  if (eff <= 0) {
-    return 0
-  }
-  return Math.min(track, Math.max(8, track * eff))
-})
 
 onMounted(async () => {
   await overlay.initialize()
@@ -52,34 +23,8 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="shell">
+    <!-- 整块可拖移窗口（与 c84decc 一致）；仅保留波浪，无白底胶囊 -->
     <div class="dock-stack" data-tauri-drag-region>
-      <p
-        v-if="showErrorCaption"
-        class="float-caption float-caption--err"
-      >
-        {{ overlay.statusMessage }}
-      </p>
-      <!-- 监听中：显示实时识别字（否则只有波浪，体感像「不出字」） -->
-      <p
-        v-else-if="overlay.sessionPhase === 'listening' && hasTranscript"
-        class="float-caption float-caption--live"
-      >
-        {{ overlay.displayTranscript }}
-      </p>
-      <!-- 非监听态：待写回等预览（idle / ready / stopping 等） -->
-      <p
-        v-else-if="!isWaveOnlySession && hasTranscript"
-        class="float-caption float-caption--preview"
-      >
-        {{ overlay.displayTranscript }}
-      </p>
-      <!-- iOS VoiceHalfCircleDock：录音态顶部细条电平 -->
-      <div v-if="isActive" class="level-bar-track" aria-hidden="true">
-        <div
-          class="level-bar-fill"
-          :style="{ width: levelBarFillPx > 0 ? `${levelBarFillPx}px` : '0' }"
-        />
-      </div>
       <div
         class="wave-anchor"
         :class="{ active: isActive, idle: !isActive }"
@@ -111,77 +56,24 @@ onBeforeUnmount(() => {
 .shell {
   width: 100%;
   height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   background: transparent;
   box-sizing: border-box;
-  padding: 2px 4px;
+  padding: 0;
+  margin: 0;
 }
 
 .dock-stack {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
-  max-width: calc(100vw - 8px);
+  justify-content: center;
   cursor: grab;
 }
 
 .dock-stack:active {
   cursor: grabbing;
-}
-
-.float-caption {
-  margin: 0;
-  max-width: 200px;
-  text-align: center;
-  font-size: 10px;
-  line-height: 1.3;
-  text-shadow:
-    0 0 10px rgba(255, 255, 255, 0.95),
-    0 1px 2px rgba(255, 255, 255, 0.9);
-}
-
-.float-caption--err {
-  color: rgba(142, 48, 48, 0.95);
-  font-size: 11px;
-  line-height: 1.35;
-  max-width: 260px;
-  max-height: 5em;
-  overflow: hidden;
-}
-
-.float-caption--live {
-  color: rgba(32, 22, 14, 0.94);
-  font-size: 13px;
-  line-height: 1.35;
-  max-width: 280px;
-  max-height: 3.9em;
-  overflow: hidden;
-  word-break: break-word;
-}
-
-.float-caption--preview {
-  color: rgba(58, 35, 20, 0.9);
-  max-height: 2.6em;
-  overflow: hidden;
-  word-break: break-word;
-}
-
-.level-bar-track {
-  width: 54px;
-  height: 5px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.22);
-  overflow: hidden;
-}
-
-.level-bar-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: rgba(24, 24, 24, 0.88);
-  transition: width 70ms ease-out;
 }
 
 .wave-anchor {
@@ -197,11 +89,10 @@ onBeforeUnmount(() => {
   border: none;
   box-shadow: none;
   filter: drop-shadow(0 3px 10px rgba(59, 37, 18, 0.22));
-  transition: transform 140ms ease, opacity 140ms ease, filter 140ms ease;
-}
-
-.wave-anchor::before {
-  display: none;
+  transition:
+    transform 140ms ease,
+    opacity 140ms ease,
+    filter 140ms ease;
 }
 
 .wave-anchor.idle {
