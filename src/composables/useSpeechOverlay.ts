@@ -40,6 +40,8 @@ export function useSpeechOverlay() {
   let recordedChunks: BlobPart[] = []
   let stopFallbackTimer: number | null = null
   let startFallbackTimer: number | null = null
+  // 仅在用户明确取消（而非 stop fallback 超时）时，忽略迟到的 native-final。
+  let ignoreLateNativeFinal = false
 
   async function debugLog(message: string) {
     try {
@@ -330,6 +332,7 @@ export function useSpeechOverlay() {
     partialTranscript.value = ''
     shouldCommitOnEnd = false
     lastHistoryEntryId = null
+    ignoreLateNativeFinal = false
     clearStartFallbackTimer()
 
     try {
@@ -386,6 +389,7 @@ export function useSpeechOverlay() {
     // 会误判为静音并提前 hide，导致永远不写回（回归 3371a92）。
 
     shouldCommitOnEnd = commitOnEnd
+    ignoreLateNativeFinal = false
     sessionPhase.value = 'stopping'
     statusMessage.value = commitOnEnd
       ? '停止录音后会自动尝试写回当前聚焦输入区。'
@@ -462,15 +466,19 @@ export function useSpeechOverlay() {
       pushDiagnostic(`已写回：${trimmed.slice(0, 40)}`)
       try {
         if (resolvedHistoryId != null) {
+          await debugLog(`history mark_written_back id=${resolvedHistoryId}`)
           await invoke('mark_history_written_back', { id: resolvedHistoryId })
           lastHistoryEntryId = null
+          await debugLog(`history marked_written_back id=${resolvedHistoryId}`)
         } else {
           const bundleId = await invoke<string | null>('get_captured_target_app_bundle_id').catch(() => null)
+          await debugLog(`history append from commit len=${trimmed.length} target=${bundleId || 'unknown'}`)
           await invoke<number>('append_history', {
             text: trimmed,
             target_app: bundleId || '未知应用',
             written_back: true,
           })
+          await debugLog('history append from commit done')
         }
         await emit('history-updated', {})
       } catch {
@@ -504,6 +512,7 @@ export function useSpeechOverlay() {
       clearStopFallbackTimer()
       clearStartFallbackTimer()
       shouldCommitOnEnd = false
+      ignoreLateNativeFinal = true
       sessionPhase.value = 'idle'
       statusMessage.value = '已结束本次语音会话。'
       await invoke('stop_native_speech')
@@ -514,6 +523,7 @@ export function useSpeechOverlay() {
     if (sessionPhase.value === 'starting') {
       clearStartFallbackTimer()
       shouldCommitOnEnd = false
+      ignoreLateNativeFinal = true
       sessionPhase.value = 'idle'
       statusMessage.value = '已取消正在启动的语音识别。'
       await invoke('stop_native_speech')
@@ -583,10 +593,12 @@ export function useSpeechOverlay() {
       clearStopFallbackTimer()
       const text = (event.payload.text || '').trim()
 
-      // 用户已双按取消并进入 idle 之后迟到的 final，不再改状态、不写历史
-      if (sessionPhase.value === 'idle') {
+      // 仅在显式取消时忽略迟到 final；否则（例如 fallback 先 idle、final 晚到）仍要接收。
+      if (ignoreLateNativeFinal && sessionPhase.value === 'idle') {
+        ignoreLateNativeFinal = false
         return
       }
+      ignoreLateNativeFinal = false
 
       transcript.value = text
       partialTranscript.value = ''
@@ -596,13 +608,16 @@ export function useSpeechOverlay() {
         lastHistoryEntryId = null
         try {
           const bundleId = await invoke<string | null>('get_captured_target_app_bundle_id').catch(() => null)
+          await debugLog(`history append from native-final len=${text.length} target=${bundleId || 'unknown'}`)
           appendedId = await invoke<number>('append_history', {
             text,
             target_app: bundleId || '未知应用',
             written_back: false,
           })
           lastHistoryEntryId = appendedId
+          await debugLog(`history append from native-final done id=${String(appendedId)}`)
         } catch {
+          await debugLog('history append from native-final failed')
           /* 历史为尽力而为 */
         }
         try {
