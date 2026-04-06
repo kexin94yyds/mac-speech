@@ -368,24 +368,6 @@ export function useSpeechOverlay() {
     }
   }
 
-  /** 再次按 Fn 且当前没有任何识别文字：立即取消，不收尾、不等待 native-final（双按取消）。 */
-  async function cancelListeningNoSpeech() {
-    clearStopFallbackTimer()
-    clearStartFallbackTimer()
-    shouldCommitOnEnd = false
-    sessionPhase.value = 'idle'
-    transcript.value = ''
-    partialTranscript.value = ''
-    lastHistoryEntryId = null
-    statusMessage.value = '已取消本次语音输入。'
-    try {
-      await invoke('stop_native_speech')
-    } catch {
-      /* ignore */
-    }
-    await hideOverlay()
-  }
-
   function stopListening(commitOnEnd: boolean) {
     clearStopFallbackTimer()
     clearStartFallbackTimer()
@@ -409,6 +391,10 @@ export function useSpeechOverlay() {
       ? '停止录音后会自动尝试写回当前聚焦输入区。'
       : '停止录音。'
     void invoke('stop_native_speech')
+    // 有写回预期时多等一会；无 partial/仅 final 的环境仍要靠 native-final 落字，不能把 phase 提前置 idle。
+    const firstPassMs = commitOnEnd ? 1800 : 450
+    const waitEmptyFinalMs = commitOnEnd ? 2600 : 1200
+
     stopFallbackTimer = window.setTimeout(async () => {
       if (sessionPhase.value !== 'stopping') {
         return
@@ -435,14 +421,14 @@ export function useSpeechOverlay() {
           sessionPhase.value = 'idle'
           statusMessage.value = '停止后没有拿到有效语音结果。'
           await hideOverlay()
-        }, 2600)
+        }, waitEmptyFinalMs)
         return
       }
 
       shouldCommitOnEnd = false
       sessionPhase.value = 'ready'
       statusMessage.value = '停止信号已发出，已用当前识别结果完成回写流程。'
-    }, 1800)
+    }, firstPassMs)
   }
 
   async function commitTextToTarget(text: string, historyEntryId?: number | null) {
@@ -509,11 +495,8 @@ export function useSpeechOverlay() {
   async function handleGlobalToggle(skipTargetCapture = false) {
     if (sessionPhase.value === 'listening') {
       const hasText = (transcript.value || partialTranscript.value).trim()
-      if (hasText) {
-        stopListening(true)
-      } else {
-        await cancelListeningNoSpeech()
-      }
+      // hasText=false 时仍须等 native-final（仅 final、无 partial 时这里也为空，不能用「秒取消」抢在 final 前把 phase 置 idle，否则不写历史）
+      stopListening(Boolean(hasText))
       return
     }
 
