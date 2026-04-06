@@ -60,8 +60,8 @@ export function useSpeechOverlay() {
       await debugLog(`history append fallback len=${trimmed.length} target=${bundleId || 'unknown'} written_back=${writtenBack}`)
       const id = await invoke<number>('append_history', {
         text: trimmed,
-        target_app: bundleId || '未知应用',
-        written_back: writtenBack,
+        targetApp: bundleId || '未知应用',
+        writtenBack,
       })
       lastHistoryEntryId = id
       lastHistoryText = trimmed
