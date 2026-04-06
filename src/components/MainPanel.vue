@@ -133,30 +133,84 @@ function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
-/** 依次触发系统对话框 / 设置页，减少你到处找入口的时间（仍需你在每步点「允许」或去设置里勾选）。 */
+/**
+ * 只对「仍缺」的权限发起系统请求，避免每次一键都把四步跑满（反复打开辅助功能/输入监控页，
+ * 容易误以为开关被关掉或要重复勾选）。
+ */
 async function runPermissionWizard() {
   windowHint.value = ''
   try {
-    windowHint.value = '1/4 正在请求麦克风…（若弹出系统对话框请点「允许」）'
-    await invoke<boolean>('request_microphone_permission')
-    await sleep(500)
+    await refreshStatuses()
 
-    windowHint.value = '2/4 正在请求语音识别…（若弹出系统对话框请点「允许」）'
-    await invoke<boolean>('request_speech_recognition_permission')
-    await sleep(500)
+    if (
+      microphoneGranted.value &&
+      speechRecognitionGranted.value &&
+      accessibilityGranted.value &&
+      inputMonitoringGranted.value
+    ) {
+      windowHint.value =
+        '四项权限系统已报告为已放行，无需重复向导。若仍异常请点「刷新权限状态」或重启 App。'
+      return
+    }
 
-    windowHint.value =
-      '3/4 已打开「辅助功能」设置。请在列表中勾选 iterate-speech，然后回到本窗口。'
-    await invoke('request_accessibility_permission')
-    await sleep(800)
+    type WizardStep = { name: string; run: () => Promise<void>; pauseMs: number }
+    const steps: WizardStep[] = []
 
-    windowHint.value = '4/4 正在请求输入监控…（若弹出系统对话框请点「允许」）'
-    await invoke('request_input_monitoring_permission')
-    await sleep(500)
+    if (!microphoneGranted.value) {
+      steps.push({
+        name: '麦克风',
+        run: async () => {
+          await invoke<boolean>('request_microphone_permission')
+        },
+        pauseMs: 500
+      })
+    }
+    if (!speechRecognitionGranted.value) {
+      steps.push({
+        name: '语音识别',
+        run: async () => {
+          await invoke<boolean>('request_speech_recognition_permission')
+        },
+        pauseMs: 500
+      })
+    }
+    if (!accessibilityGranted.value) {
+      steps.push({
+        name: '辅助功能',
+        run: async () => {
+          await invoke('request_accessibility_permission')
+        },
+        pauseMs: 800
+      })
+    }
+    if (!inputMonitoringGranted.value) {
+      steps.push({
+        name: '输入监控',
+        run: async () => {
+          await invoke('request_input_monitoring_permission')
+        },
+        pauseMs: 500
+      })
+    }
+
+    if (steps.length === 0) {
+      await refreshStatuses()
+      windowHint.value = '权限状态已更新，请查看上方卡片。'
+      return
+    }
+
+    const total = steps.length
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i]
+      const n = i + 1
+      windowHint.value = `${n}/${total} 正在处理「${step.name}」…（若弹出系统对话框或设置页请按提示操作）`
+      await step.run()
+      await sleep(step.pauseMs)
+    }
 
     await refreshStatuses()
     windowHint.value =
-      '向导已跑完。若「辅助功能」是手动勾选的，请确认已打开开关，再试按 Fn。'
+      '向导已仅针对缺项跑完。若某项仍为「待授权」，请到系统设置里勾选后，再点「刷新权限状态」。'
   } catch (error) {
     windowHint.value = `向导中断：${String(error)}`
   }
@@ -207,7 +261,7 @@ onUnmounted(() => {
         这个窗口现在回到“工具控制台”的角色，负责权限、入口、词典和历史这些长期能力。热键交互层单独拆成
         overlay。现在权限 onboarding 也回收到主 App：先完成四项授权，再按一次 <code>Fn</code>
         开始录音、再按一次停止并把文本注入当前输入框。若在「系统设置」里已勾选权限，回到本窗口后卡片仍显示「待授权」，请点
-        <strong>刷新权限状态</strong>（或点一下别的 App 再点回来，会自动重读）。测试请优先使用本仓库
+        <strong>刷新权限状态</strong>（或点一下别的 App 再点回来，会自动重读）。「一键权限向导」只会对<strong>仍显示待授权</strong>的项发起系统请求，不会每次把四项全跑一遍。测试请优先使用本仓库
         <code>pnpm tauri:build</code> 打出来的 <code>.app</code>，避免继续打开旧的「应用程序」里拷贝导致界面不是最新版。
       </p>
 
