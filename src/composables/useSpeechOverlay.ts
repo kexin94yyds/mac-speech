@@ -36,6 +36,7 @@ export function useSpeechOverlay() {
   let recordedChunks: BlobPart[] = []
   let stopFallbackTimer: number | null = null
   let startFallbackTimer: number | null = null
+  let lastToggleAt = 0
 
   async function debugLog(message: string) {
     try {
@@ -453,8 +454,22 @@ export function useSpeechOverlay() {
   }
 
   async function handleGlobalToggle(skipTargetCapture = false) {
+    const now = Date.now()
+    if (now - lastToggleAt < 320) {
+      await debugLog(
+        `toggle ignored by debounce phase=${sessionPhase.value} deltaMs=${now - lastToggleAt}`,
+      )
+      return
+    }
+    lastToggleAt = now
+
     if (sessionPhase.value === 'listening') {
       stopListening(true)
+      return
+    }
+
+    if (sessionPhase.value === 'stopping') {
+      await debugLog('toggle ignored while stopping')
       return
     }
 
