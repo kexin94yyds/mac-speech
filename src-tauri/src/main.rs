@@ -23,6 +23,24 @@ const OWN_BUNDLE_ID: &str = "xin.iterate.speech";
 static LAST_TARGET_APP_BUNDLE_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 
+fn persist_debug_log(message: &str) {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    if let Ok(mut file) = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/tmp/iterate-speech-debug.log")
+    {
+        let _ = writeln!(file, "{ts} {message}");
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct OverlayPositionFile {
     x: i32,
@@ -122,6 +140,7 @@ extern "C" fn native_speech_callback(
 
     if event_type == "error" {
         eprintln!("[iterate-speech] native speech error: {text}");
+        persist_debug_log(&format!("[iterate-speech] native speech error: {text}"));
     }
 
     let _ = app.emit(
@@ -135,12 +154,15 @@ extern "C" fn native_speech_callback(
 #[cfg(target_os = "macos")]
 mod macos {
     use super::{TogglePayload, GLOBAL_SHORTCUT, TOGGLE_EVENT};
+    use cocoa::base::{id, nil, BOOL, YES};
+    use cocoa::foundation::{NSString, NSUInteger};
     use core_foundation::runloop::CFRunLoop;
     use core_graphics::event::{
         CallbackResult, CGEvent, CGEventFlags, CGEventTap, CGEventTapLocation,
         CGEventTapOptions, CGEventTapPlacement, CGEventType, CGKeyCode, EventField,
     };
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+    use objc::{class, msg_send, sel, sel_impl};
     use std::sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -165,8 +187,9 @@ mod macos {
             .map_err(|_| "failed to create Cmd+V key up event")?;
         key_up.set_flags(CGEventFlags::CGEventFlagCommand);
 
-        key_down.post(CGEventTapLocation::HID);
-        key_up.post(CGEventTapLocation::HID);
+        // 与 ClipBook / PAT-2026-077 一致：AnnotatedSession 比 HID 更易被前台文本框接收
+        key_down.post(CGEventTapLocation::AnnotatedSession);
+        key_up.post(CGEventTapLocation::AnnotatedSession);
         thread::sleep(Duration::from_millis(60));
 
         Ok(())
@@ -244,16 +267,54 @@ mod macos {
     }
 
     pub fn activate_app(bundle_id: &str) -> Result<(), String> {
+        unsafe {
+            let ns_bundle_id = NSString::alloc(nil).init_str(bundle_id);
+            let running_apps: id =
+                msg_send![class!(NSRunningApplication), runningApplicationsWithBundleIdentifier: ns_bundle_id];
+            let count: NSUInteger = msg_send![running_apps, count];
+
+            if count > 0 {
+                let target_app: id = msg_send![running_apps, objectAtIndex: 0];
+                // NSApplicationActivateIgnoringOtherApps = 1 << 1 = 2
+                let activated: BOOL = msg_send![target_app, activateWithOptions: 2usize];
+                if activated == YES {
+                    return Ok(());
+                }
+                eprintln!(
+                    "[iterate-speech] native activateWithOptions returned false bundle_id={bundle_id}, fallback to osascript"
+                );
+            } else {
+                eprintln!(
+                    "[iterate-speech] NSRunningApplication not found for bundle_id={bundle_id}, fallback to osascript"
+                );
+            }
+        }
+
         let script = format!("tell application id \"{bundle_id}\" to activate");
         let status = Command::new("osascript")
             .args(["-e", &script])
             .status()
             .map_err(|error| format!("failed to activate macOS app {bundle_id}: {error}"))?;
 
-        if status.success() {
-            Ok(())
-        } else {
-            Err(format!("activating macOS app {bundle_id} returned a non-zero exit code"))
+        if !status.success() {
+            return Err(format!(
+                "activating macOS app {bundle_id} returned a non-zero exit code"
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub fn wait_frontmost_bundle(target_bundle_id: &str, timeout_ms: u64) -> Result<bool, String> {
+        let start = std::time::Instant::now();
+        loop {
+            if frontmost_app_bundle_id()? == target_bundle_id {
+                return Ok(true);
+            }
+            if start.elapsed() >= Duration::from_millis(timeout_ms) {
+                return Ok(false);
+            }
+            thread::sleep(Duration::from_millis(60));
         }
     }
 
@@ -447,18 +508,48 @@ fn paste_text(text: String, app: tauri::AppHandle) -> Result<(), String> {
                     "[iterate-speech] paste_text target_bundle={bundle_id} chars={}",
                     text.chars().count()
                 );
+                persist_debug_log(&format!(
+                    "[iterate-speech] paste_text target_bundle={bundle_id} chars={}",
+                    text.chars().count()
+                ));
                 macos::activate_app(&bundle_id)?;
-                thread::sleep(Duration::from_millis(280));
+                let switched = macos::wait_frontmost_bundle(&bundle_id, 1200)?;
+                if !switched {
+                    eprintln!(
+                        "[iterate-speech] paste_text activate not frontmost yet, retry target_bundle={bundle_id}"
+                    );
+                    persist_debug_log(&format!(
+                        "[iterate-speech] paste_text activate retry target_bundle={bundle_id}"
+                    ));
+                    macos::activate_app(&bundle_id)?;
+                    let switched_retry = macos::wait_frontmost_bundle(&bundle_id, 900)?;
+                    if !switched_retry {
+                        let current = macos::frontmost_app_bundle_id().unwrap_or_else(|_| "<unknown>".to_string());
+                        eprintln!(
+                            "[iterate-speech] paste_text WARNING frontmost mismatch current={current} expected={bundle_id}"
+                        );
+                        persist_debug_log(&format!(
+                            "[iterate-speech] paste_text WARNING frontmost mismatch current={current} expected={bundle_id}"
+                        ));
+                    }
+                }
+                thread::sleep(Duration::from_millis(180));
             }
             Some(bundle_id) => {
                 eprintln!(
                     "[iterate-speech] paste_text skip activate stored is own bundle_id={bundle_id}"
                 );
+                persist_debug_log(&format!(
+                    "[iterate-speech] paste_text skip activate stored own bundle_id={bundle_id}"
+                ));
                 thread::sleep(Duration::from_millis(120));
             }
             None => {
                 eprintln!(
                     "[iterate-speech] paste_text WARNING no stored target; Cmd+V goes to current frontmost (不稳定，建议先在目标输入框按第一次 Fn)"
+                );
+                persist_debug_log(
+                    "[iterate-speech] paste_text WARNING no stored target; Cmd+V goes to current frontmost",
                 );
                 thread::sleep(Duration::from_millis(160));
             }
@@ -466,6 +557,7 @@ fn paste_text(text: String, app: tauri::AppHandle) -> Result<(), String> {
 
         thread::sleep(Duration::from_millis(90));
         macos::simulate_paste()?;
+        persist_debug_log("[iterate-speech] paste_text simulate_paste dispatched");
 
         if let Some(previous) = previous {
             thread::sleep(Duration::from_millis(120));
@@ -494,6 +586,9 @@ fn capture_frontmost_target_app() -> Result<(), String> {
             eprintln!(
                 "[iterate-speech] capture_frontmost_target_app skip own bundle_id={bundle_id}"
             );
+            persist_debug_log(&format!(
+                "[iterate-speech] capture_frontmost_target_app skip own bundle_id={bundle_id}"
+            ));
             return Ok(());
         }
 
@@ -501,6 +596,9 @@ fn capture_frontmost_target_app() -> Result<(), String> {
             .lock()
             .map_err(|_| "failed to lock target app bundle id store".to_string())?;
         eprintln!("[iterate-speech] capture_frontmost_target_app target={bundle_id}");
+        persist_debug_log(&format!(
+            "[iterate-speech] capture_frontmost_target_app target={bundle_id}"
+        ));
         *guard = Some(bundle_id);
         Ok(())
     }
@@ -520,17 +618,32 @@ fn remember_frontmost_app() -> Result<(), String> {
 fn repin_paste_target_from_frontmost() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        let bundle_id = macos::frontmost_app_bundle_id()?;
+        let mut bundle_id = macos::frontmost_app_bundle_id()?;
+        if bundle_id == OWN_BUNDLE_ID {
+            for _ in 0..10 {
+                thread::sleep(Duration::from_millis(60));
+                bundle_id = macos::frontmost_app_bundle_id()?;
+                if bundle_id != OWN_BUNDLE_ID {
+                    break;
+                }
+            }
+        }
         if bundle_id == OWN_BUNDLE_ID {
             eprintln!(
-                "[iterate-speech] repin_paste_target_from_frontmost skip own bundle_id={bundle_id}"
+                "[iterate-speech] repin_paste_target_from_frontmost skip own bundle_id={bundle_id} (frontmost did not settle)"
             );
+            persist_debug_log(&format!(
+                "[iterate-speech] repin_paste_target_from_frontmost skip own bundle_id={bundle_id}"
+            ));
             return Ok(());
         }
         let mut guard = last_target_app_bundle_id()
             .lock()
             .map_err(|_| "failed to lock target app bundle id store".to_string())?;
         eprintln!("[iterate-speech] repin_paste_target_from_frontmost target={bundle_id}");
+        persist_debug_log(&format!(
+            "[iterate-speech] repin_paste_target_from_frontmost target={bundle_id}"
+        ));
         *guard = Some(bundle_id);
         Ok(())
     }
@@ -543,6 +656,7 @@ fn repin_paste_target_from_frontmost() -> Result<(), String> {
 #[tauri::command]
 fn start_native_speech() -> Result<(), String> {
     eprintln!("[iterate-speech] start_native_speech invoked");
+    persist_debug_log("[iterate-speech] start_native_speech invoked");
     #[cfg(target_os = "macos")]
     unsafe {
         // Always tear down any in-flight recognition before starting a new session.
@@ -556,6 +670,7 @@ fn start_native_speech() -> Result<(), String> {
 #[tauri::command]
 fn stop_native_speech() -> Result<(), String> {
     eprintln!("[iterate-speech] stop_native_speech invoked");
+    persist_debug_log("[iterate-speech] stop_native_speech invoked");
     #[cfg(target_os = "macos")]
     unsafe {
         speech_bridge_stop();
@@ -566,6 +681,7 @@ fn stop_native_speech() -> Result<(), String> {
 #[tauri::command]
 fn debug_log(message: String) {
     eprintln!("[iterate-speech][web] {message}");
+    persist_debug_log(&format!("[iterate-speech][web] {message}"));
 }
 
 #[tauri::command]
