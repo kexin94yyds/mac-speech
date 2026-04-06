@@ -368,6 +368,24 @@ export function useSpeechOverlay() {
     }
   }
 
+  /** 再次按 Fn 且当前没有任何识别文字：立即取消，不收尾、不等待 native-final（双按取消）。 */
+  async function cancelListeningNoSpeech() {
+    clearStopFallbackTimer()
+    clearStartFallbackTimer()
+    shouldCommitOnEnd = false
+    sessionPhase.value = 'idle'
+    transcript.value = ''
+    partialTranscript.value = ''
+    lastHistoryEntryId = null
+    statusMessage.value = '已取消本次语音输入。'
+    try {
+      await invoke('stop_native_speech')
+    } catch {
+      /* ignore */
+    }
+    await hideOverlay()
+  }
+
   function stopListening(commitOnEnd: boolean) {
     clearStopFallbackTimer()
     clearStartFallbackTimer()
@@ -490,7 +508,12 @@ export function useSpeechOverlay() {
 
   async function handleGlobalToggle(skipTargetCapture = false) {
     if (sessionPhase.value === 'listening') {
-      stopListening(true)
+      const hasText = (transcript.value || partialTranscript.value).trim()
+      if (hasText) {
+        stopListening(true)
+      } else {
+        await cancelListeningNoSpeech()
+      }
       return
     }
 
@@ -576,6 +599,12 @@ export function useSpeechOverlay() {
       clearStartFallbackTimer()
       clearStopFallbackTimer()
       const text = (event.payload.text || '').trim()
+
+      // 用户已双按取消并进入 idle 之后迟到的 final，不再改状态、不写历史
+      if (sessionPhase.value === 'idle') {
+        return
+      }
+
       transcript.value = text
       partialTranscript.value = ''
 
@@ -598,10 +627,6 @@ export function useSpeechOverlay() {
         } catch {
           /* ignore */
         }
-      }
-
-      if (sessionPhase.value === 'idle' && !text) {
-        return
       }
 
       if (shouldCommitOnEnd && text) {
