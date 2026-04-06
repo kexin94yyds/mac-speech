@@ -10,6 +10,7 @@ const overlayShortcut = 'Fn'
 
 /** 最近一次 native-final 写入历史的 id；写回成功后清空。 */
 let lastHistoryEntryId: number | null = null
+let lastHistoryText = ''
 
 export function useSpeechOverlay() {
   const sessionPhase = ref<SessionPhase>('idle')
@@ -48,6 +49,28 @@ export function useSpeechOverlay() {
       await invoke('debug_log', { message })
     } catch {
       // Ignore logging failures in production flow.
+    }
+  }
+
+  async function appendHistoryBestEffort(text: string, writtenBack: boolean) {
+    const trimmed = text.trim()
+    if (!trimmed) return null
+    try {
+      const bundleId = await invoke<string | null>('get_captured_target_app_bundle_id').catch(() => null)
+      await debugLog(`history append fallback len=${trimmed.length} target=${bundleId || 'unknown'} written_back=${writtenBack}`)
+      const id = await invoke<number>('append_history', {
+        text: trimmed,
+        target_app: bundleId || '未知应用',
+        written_back: writtenBack,
+      })
+      lastHistoryEntryId = id
+      lastHistoryText = trimmed
+      await emit('history-updated', {})
+      await debugLog(`history append fallback done id=${String(id)}`)
+      return id
+    } catch {
+      await debugLog('history append fallback failed')
+      return null
     }
   }
 
@@ -258,6 +281,7 @@ export function useSpeechOverlay() {
     sessionPhase.value = 'idle'
     micLevel.value = 0
     lastHistoryEntryId = null
+    lastHistoryText = ''
   }
 
   async function refreshAccessibilityStatus() {
@@ -332,6 +356,7 @@ export function useSpeechOverlay() {
     partialTranscript.value = ''
     shouldCommitOnEnd = false
     lastHistoryEntryId = null
+    lastHistoryText = ''
     ignoreLateNativeFinal = false
     clearStartFallbackTimer()
 
@@ -430,6 +455,9 @@ export function useSpeechOverlay() {
       }
 
       shouldCommitOnEnd = false
+      if (!lastHistoryEntryId) {
+        await appendHistoryBestEffort(commitText, false)
+      }
       sessionPhase.value = 'ready'
       statusMessage.value = '停止信号已发出，已用当前识别结果完成回写流程。'
     }, firstPassMs)
@@ -469,18 +497,11 @@ export function useSpeechOverlay() {
           await debugLog(`history mark_written_back id=${resolvedHistoryId}`)
           await invoke('mark_history_written_back', { id: resolvedHistoryId })
           lastHistoryEntryId = null
+          lastHistoryText = ''
           await debugLog(`history marked_written_back id=${resolvedHistoryId}`)
         } else {
-          const bundleId = await invoke<string | null>('get_captured_target_app_bundle_id').catch(() => null)
-          await debugLog(`history append from commit len=${trimmed.length} target=${bundleId || 'unknown'}`)
-          await invoke<number>('append_history', {
-            text: trimmed,
-            target_app: bundleId || '未知应用',
-            written_back: true,
-          })
-          await debugLog('history append from commit done')
+          await appendHistoryBestEffort(trimmed, true)
         }
-        await emit('history-updated', {})
       } catch {
         /* history is best-effort */
       }
@@ -605,25 +626,12 @@ export function useSpeechOverlay() {
 
       let appendedId: number | null = null
       if (text) {
-        lastHistoryEntryId = null
-        try {
-          const bundleId = await invoke<string | null>('get_captured_target_app_bundle_id').catch(() => null)
-          await debugLog(`history append from native-final len=${text.length} target=${bundleId || 'unknown'}`)
-          appendedId = await invoke<number>('append_history', {
-            text,
-            target_app: bundleId || '未知应用',
-            written_back: false,
-          })
-          lastHistoryEntryId = appendedId
-          await debugLog(`history append from native-final done id=${String(appendedId)}`)
-        } catch {
-          await debugLog('history append from native-final failed')
-          /* 历史为尽力而为 */
-        }
-        try {
-          await emit('history-updated', {})
-        } catch {
-          /* ignore */
+        if (!shouldCommitOnEnd && lastHistoryEntryId && lastHistoryText === text) {
+          appendedId = lastHistoryEntryId
+        } else {
+          lastHistoryEntryId = null
+          lastHistoryText = ''
+          appendedId = await appendHistoryBestEffort(text, false)
         }
       }
 
