@@ -559,6 +559,18 @@ fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
     reveal_main_window(&app)
 }
 
+/// 仅显示/还原主窗口，不抢焦点（用于权限引导等，避免打断当前前台应用）。
+#[tauri::command]
+fn show_main_window_no_focus(app: tauri::AppHandle) -> Result<(), String> {
+    let Some(window) = app.get_webview_window("main") else {
+        return Err("main window not found".to_string());
+    };
+
+    let _ = window.unminimize();
+    let _ = window.show();
+    Ok(())
+}
+
 #[tauri::command]
 fn reveal_overlay_window(app: tauri::AppHandle) -> Result<(), String> {
     let Some(window) = app.get_webview_window("overlay") else {
@@ -597,7 +609,7 @@ fn reveal_overlay_anchor(window: &tauri::WebviewWindow) {
         eprintln!("[iterate-speech] revealing bottom anchor");
         let _ = window_for_main_thread.unminimize();
         let _ = window_for_main_thread.show();
-        let _ = window_for_main_thread.set_focus();
+        // 不对 overlay 调用 set_focus：否则会激活整个 App，主窗口常被带到前台，破坏「Fn 只出波浪」的体验。
     });
 }
 
@@ -692,6 +704,7 @@ fn main() {
             request_input_monitoring_permission,
             remember_frontmost_app,
             show_main_window,
+            show_main_window_no_focus,
             reveal_overlay_window,
             start_native_speech,
             stop_native_speech,

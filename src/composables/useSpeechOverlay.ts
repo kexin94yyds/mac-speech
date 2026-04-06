@@ -289,7 +289,7 @@ export function useSpeechOverlay() {
     pushDiagnostic(`permission gate blocked: ${missingPermissions.join(', ')}`)
     await debugLog(`permission gate blocked missing=${missingPermissions.join(',')}`)
     await hideOverlay()
-    await invoke('show_main_window')
+    await invoke('show_main_window_no_focus')
     return false
   }
 
