@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 
 interface HistoryItem {
   id: number
@@ -43,8 +44,17 @@ function copyText(text: string) {
   setTimeout(() => { copiedId.value = null }, 1500)
 }
 
-onMounted(() => {
-  void refresh()
+let unlistenHistory: (() => void) | undefined
+
+onMounted(async () => {
+  await refresh()
+  unlistenHistory = await listen('history-updated', () => {
+    void refresh()
+  })
+})
+
+onBeforeUnmount(() => {
+  unlistenHistory?.()
 })
 </script>
 

@@ -689,7 +689,15 @@ struct HistoryEntry {
 }
 
 #[tauri::command]
-fn append_history(text: String, target_app: String, written_back: bool) -> Result<(), String> {
+fn get_captured_target_app_bundle_id() -> Option<String> {
+    last_target_app_bundle_id()
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone())
+}
+
+#[tauri::command]
+fn append_history(text: String, target_app: String, written_back: bool) -> Result<u64, String> {
     let path = history_file_path();
     let mut entries: Vec<HistoryEntry> = if path.exists() {
         let data = std::fs::read_to_string(&path).unwrap_or_default();
@@ -717,6 +725,23 @@ fn append_history(text: String, target_app: String, written_back: bool) -> Resul
         entries.truncate(100);
     }
 
+    let json = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
+    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    Ok(id)
+}
+
+#[tauri::command]
+fn mark_history_written_back(id: u64) -> Result<(), String> {
+    let path = history_file_path();
+    if !path.exists() {
+        return Err("history file missing".to_string());
+    }
+    let data = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let mut entries: Vec<HistoryEntry> = serde_json::from_str(&data).unwrap_or_default();
+    let Some(entry) = entries.iter_mut().find(|e| e.id == id) else {
+        return Err("history entry not found".to_string());
+    };
+    entry.written_back = true;
     let json = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| e.to_string())?;
     Ok(())
@@ -878,7 +903,9 @@ fn main() {
             stop_native_speech,
             debug_log,
             paste_text,
+            get_captured_target_app_bundle_id,
             append_history,
+            mark_history_written_back,
             load_history,
             save_dictionary,
             load_dictionary,

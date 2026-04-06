@@ -1,12 +1,15 @@
 import { computed, ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
+import { emit, listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { transcribeAudioBlob } from '../engines/localWhisperTranscriber'
 
 type SessionPhase = 'idle' | 'starting' | 'listening' | 'stopping' | 'ready' | 'unsupported' | 'error'
 
 const overlayShortcut = 'Fn'
+
+/** 最近一次 native-final 写入历史的 id；写回成功后清空。 */
+let lastHistoryEntryId: number | null = null
 
 export function useSpeechOverlay() {
   const sessionPhase = ref<SessionPhase>('idle')
@@ -252,6 +255,7 @@ export function useSpeechOverlay() {
     partialTranscript.value = ''
     sessionPhase.value = 'idle'
     micLevel.value = 0
+    lastHistoryEntryId = null
   }
 
   async function refreshAccessibilityStatus() {
@@ -325,6 +329,7 @@ export function useSpeechOverlay() {
     transcript.value = ''
     partialTranscript.value = ''
     shouldCommitOnEnd = false
+    lastHistoryEntryId = null
     clearStartFallbackTimer()
 
     try {
@@ -422,12 +427,14 @@ export function useSpeechOverlay() {
     }, 1800)
   }
 
-  async function commitTextToTarget(text: string) {
+  async function commitTextToTarget(text: string, historyEntryId?: number | null) {
     const trimmed = text.trim()
     if (!trimmed) {
       statusMessage.value = '没有可写回的文本。'
       return
     }
+
+    const resolvedHistoryId = historyEntryId !== undefined ? historyEntryId : lastHistoryEntryId
 
     await refreshAccessibilityStatus()
 
@@ -450,12 +457,21 @@ export function useSpeechOverlay() {
       statusMessage.value = '已尝试把文本写回当前聚焦输入区。'
       pushDiagnostic(`已写回：${trimmed.slice(0, 40)}`)
       try {
-        await invoke('append_history', {
-          text: trimmed,
-          target_app: '当前应用',
-          written_back: true,
-        })
-      } catch { /* history is best-effort */ }
+        if (resolvedHistoryId != null) {
+          await invoke('mark_history_written_back', { id: resolvedHistoryId })
+          lastHistoryEntryId = null
+        } else {
+          const bundleId = await invoke<string | null>('get_captured_target_app_bundle_id').catch(() => null)
+          await invoke<number>('append_history', {
+            text: trimmed,
+            target_app: bundleId || '未知应用',
+            written_back: true,
+          })
+        }
+        await emit('history-updated', {})
+      } catch {
+        /* history is best-effort */
+      }
     } catch (error) {
       const message = String(error)
       if (message.includes('写回超时')) {
@@ -563,6 +579,27 @@ export function useSpeechOverlay() {
       transcript.value = text
       partialTranscript.value = ''
 
+      let appendedId: number | null = null
+      if (text) {
+        lastHistoryEntryId = null
+        try {
+          const bundleId = await invoke<string | null>('get_captured_target_app_bundle_id').catch(() => null)
+          appendedId = await invoke<number>('append_history', {
+            text,
+            target_app: bundleId || '未知应用',
+            written_back: false,
+          })
+          lastHistoryEntryId = appendedId
+        } catch {
+          /* 历史为尽力而为 */
+        }
+        try {
+          await emit('history-updated', {})
+        } catch {
+          /* ignore */
+        }
+      }
+
       if (sessionPhase.value === 'idle' && !text) {
         return
       }
@@ -571,7 +608,7 @@ export function useSpeechOverlay() {
         shouldCommitOnEnd = false
         sessionPhase.value = 'ready'
         statusMessage.value = '已拿到最终识别结果，正在尝试写回当前聚焦输入区。'
-        void commitTextToTarget(text)
+        void commitTextToTarget(text, appendedId)
         return
       }
 
