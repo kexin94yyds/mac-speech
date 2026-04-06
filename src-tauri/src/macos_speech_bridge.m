@@ -2,6 +2,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <Speech/Speech.h>
 #import <objc/message.h>
+#import <stdatomic.h>
 
 typedef void (*SpeechBridgeCallback)(const char *event_type, const char *text, void *user_data);
 
@@ -201,7 +202,15 @@ typedef void (*SpeechBridgeCallback)(const char *event_type, const char *text, v
 
 void speech_bridge_start(SpeechBridgeCallback callback, void *user_data) {
     // Tauri commands may invoke this off the main queue; AVAudioEngine + Speech must run on main.
+    // Coalesce rapid stop+start (e.g. double Fn): only the latest scheduled start may run, so stale
+    // async blocks cannot resurrect a half-torn session ("mic won't open" until app restart).
+    static _Atomic uint64_t g_start_generation = 0;
+    uint64_t mine = atomic_fetch_add(&g_start_generation, 1) + 1;
     dispatch_async(dispatch_get_main_queue(), ^{
+        uint64_t current = atomic_load(&g_start_generation);
+        if (mine != current) {
+            return;
+        }
         [[IterateSpeechBridge shared] startWithCallback:callback userData:user_data];
     });
 }

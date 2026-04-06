@@ -537,6 +537,11 @@ export function useSpeechOverlay() {
       pushDiagnostic(statusMessage.value)
       shouldCommitOnEnd = false
       stopMeter()
+      try {
+        await invoke('stop_native_speech')
+      } catch {
+        // Best-effort: align native bridge with error state so the next Fn can cold-start cleanly.
+      }
     })
   }
 
