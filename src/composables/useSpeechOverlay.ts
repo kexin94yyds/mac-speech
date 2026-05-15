@@ -614,7 +614,11 @@ export function useSpeechOverlay() {
     }
   }
 
-  async function handleGlobalToggle(skipTargetCapture = false) {
+  async function handleGlobalToggle(opts: {
+    skipTargetCapture?: boolean
+    modeId?: string | null
+    shortcut?: string
+  } = {}) {
     if (sessionPhase.value === 'listening') {
       const hasText = iosStyleDraft.resolveTranscript(partialTranscript.value, transcript.value).trim()
       // hasText=false 时仍须等 native-final（仅 final、无 partial 时这里也为空，不能用「秒取消」抢在 final 前把 phase 置 idle，否则不写历史）
@@ -645,7 +649,11 @@ export function useSpeechOverlay() {
       return
     }
 
-    await startListening('shortcut', { skipTargetCapture })
+    await startListening('shortcut', {
+      skipTargetCapture: opts.skipTargetCapture,
+      modeId: opts.modeId,
+      shortcut: opts.shortcut,
+    })
   }
 
   async function commitFromPanel() {
@@ -667,8 +675,8 @@ export function useSpeechOverlay() {
       pushDiagnostic(`输入监控权限请求失败：${String(error)}`)
     }
     statusMessage.value = IOS_STYLE_DRAFT_EXPERIMENT
-      ? '等待 Fn 唤起原生实时语音输入。当前为 lab 实验版：优先验证 iOS 风格草稿分段。'
-      : '等待 Fn 唤起原生实时语音输入。'
+      ? '等待 Fn / Ctrl+1 / Ctrl+2 唤起原生实时语音输入。当前为 lab 实验版：优先验证 iOS 风格草稿分段。'
+      : '等待 Fn / Ctrl+1 / Ctrl+2 唤起原生实时语音输入。'
 
     visibilityRefreshHandler = () => {
       if (document.visibilityState === 'visible')
@@ -677,14 +685,18 @@ export function useSpeechOverlay() {
     document.addEventListener('visibilitychange', visibilityRefreshHandler)
 
     await debugLog(`listeners attaching window=${getCurrentWindow().label}`)
-    unlistenToggle = await listen<{ shortcut: string; skip_target_capture?: boolean }>(
+    unlistenToggle = await listen<{ shortcut: string; mode_id?: string; skip_target_capture?: boolean }>(
       'speech://toggle',
       async (event) => {
         const skip = Boolean(event.payload.skip_target_capture)
         await debugLog(
-          `toggle event received window=${getCurrentWindow().label} phase=${sessionPhase.value} skip_target_capture=${skip}`,
+          `toggle event received window=${getCurrentWindow().label} mode=${event.payload.mode_id || 'default'} shortcut=${event.payload.shortcut} phase=${sessionPhase.value} skip_target_capture=${skip}`,
         )
-        await handleGlobalToggle(skip)
+        await handleGlobalToggle({
+          skipTargetCapture: skip,
+          modeId: event.payload.mode_id,
+          shortcut: event.payload.shortcut,
+        })
       },
     )
     unlistenNativeStarted = await listen<{ text: string }>('speech://native-started', async (event) => {
@@ -698,7 +710,7 @@ export function useSpeechOverlay() {
       clearStopFallbackTimer()
       sessionPhase.value = 'listening'
       const recognitionMode = event.payload.text === 'on-device' ? '本地实时识别' : '系统识别'
-      statusMessage.value = `正在录音（${recognitionMode}），实时结果会逐步显示；再次按 Fn 会停止并尝试写回。`
+      statusMessage.value = `正在录音（${recognitionMode} / ${activeMode.value.name}），实时结果会逐步显示；再次按快捷键会停止并尝试写回。`
       pushDiagnostic(`native speech started: ${recognitionMode}`)
     })
     unlistenNativePartial = await listen<{ text: string }>('speech://native-partial', async (event) => {
@@ -723,25 +735,8 @@ export function useSpeechOverlay() {
       }
       ignoreLateNativeFinal = false
 
-      transcript.value = text
-      partialTranscript.value = ''
-
-      let appendedId: number | null = null
       if (text) {
-        if (!shouldCommitOnEnd && lastHistoryEntryId && lastHistoryText === text) {
-          appendedId = lastHistoryEntryId
-        } else {
-          lastHistoryEntryId = null
-          lastHistoryText = ''
-          appendedId = await appendHistoryBestEffort(text, false)
-        }
-      }
-
-      if (shouldCommitOnEnd && text) {
-        shouldCommitOnEnd = false
-        sessionPhase.value = 'ready'
-        statusMessage.value = '已拿到最终识别结果，正在尝试写回当前聚焦输入区。'
-        void commitTextToTarget(text, appendedId)
+        await finalizeRecognizedText(text, shouldCommitOnEnd)
         return
       }
 
