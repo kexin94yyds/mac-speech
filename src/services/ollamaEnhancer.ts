@@ -1,0 +1,113 @@
+import type { SpeechMode } from '../config/speechModes'
+
+const OLLAMA_BASE_URL = 'http://localhost:11434'
+
+interface OllamaGenerateResponse {
+  response?: string
+  error?: string
+}
+
+export interface DictionaryEntryLike {
+  word?: string
+  replacement?: string
+  spokenPhrase?: string
+  outputText?: string
+}
+
+export interface EnhanceTranscriptInput {
+  text: string
+  mode: SpeechMode
+  dictionaryEntries?: DictionaryEntryLike[]
+}
+
+function buildDictionaryBlock(entries: DictionaryEntryLike[] = []) {
+  const lines = entries
+    .map((entry) => {
+      const source = (entry.word || entry.spokenPhrase || '').trim()
+      const target = (entry.replacement || entry.outputText || source).trim()
+      if (!source) return ''
+      return source === target ? `- ${source}` : `- ${source} => ${target}`
+    })
+    .filter(Boolean)
+    .slice(0, 80)
+
+  if (!lines.length) {
+    return ''
+  }
+
+  return [
+    '',
+    '个人词典：以下术语和替换规则优先保留或修正。',
+    ...lines,
+  ].join('\n')
+}
+
+function buildPrompt(input: EnhanceTranscriptInput) {
+  return [
+    input.mode.prompt,
+    buildDictionaryBlock(input.dictionaryEntries),
+    '',
+    '待处理语音转写文本：',
+    input.text,
+    '',
+    '只输出最终可写回文本，不要输出解释、前缀、代码块或思考过程。',
+  ].join('\n')
+}
+
+function stripModelNoise(text: string) {
+  let cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+  cleaned = cleaned.replace(/^```(?:\w+)?\s*/u, '').replace(/\s*```$/u, '').trim()
+  cleaned = cleaned.replace(/^(?:输出|结果|整理后|润色后|最终文本)[:：]\s*/u, '').trim()
+  return cleaned
+}
+
+export async function enhanceTranscript(input: EnhanceTranscriptInput) {
+  const trimmed = input.text.trim()
+  if (!trimmed) {
+    return ''
+  }
+
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), input.mode.enhancementTimeoutMs)
+
+  try {
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: input.mode.ollamaModel,
+        prompt: buildPrompt(input),
+        stream: false,
+        options: {
+          temperature: 0.15,
+        },
+      }),
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      throw new Error(`Ollama returned HTTP ${response.status}`)
+    }
+
+    const payload = await response.json() as OllamaGenerateResponse
+    if (payload.error) {
+      throw new Error(payload.error)
+    }
+
+    const enhanced = stripModelNoise(payload.response || '')
+    if (!enhanced) {
+      throw new Error('Ollama returned empty text')
+    }
+
+    return enhanced
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error(`Ollama enhancement timed out after ${Math.round(input.mode.enhancementTimeoutMs / 1000)}s`)
+    }
+    throw error
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}
