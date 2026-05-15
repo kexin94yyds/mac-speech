@@ -89,7 +89,10 @@ export function useSpeechOverlay() {
 
   async function loadDictionaryEntriesBestEffort() {
     try {
-      return await invoke<DictionaryEntryLike[]>('load_dictionary')
+      const entries = await invoke<DictionaryEntryLike[]>('load_dictionary')
+      const cunzhiCount = entries.filter((entry) => entry.source === 'cunzhi').length
+      await debugLog(`dictionary load ok count=${entries.length} cunzhi=${cunzhiCount}`)
+      return entries
     } catch {
       await debugLog('dictionary load skipped before enhancement')
       return []

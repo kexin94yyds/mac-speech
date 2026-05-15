@@ -1048,15 +1048,25 @@ fn default_true() -> bool {
 
 fn load_cunzhi_speech_memory_entries() -> Vec<DictEntry> {
     let Some(path) = cunzhi_speech_memory_file_path() else {
+        eprintln!("[iterate-speech] shared speech memory path unavailable: HOME is not set");
         return vec![];
     };
-    let Ok(data) = std::fs::read_to_string(path) else {
+    let Ok(data) = std::fs::read_to_string(&path) else {
+        eprintln!(
+            "[iterate-speech] shared speech memory missing or unreadable path={}",
+            path.display()
+        );
         return vec![];
     };
     let Ok(entries) = serde_json::from_str::<Vec<CunzhiSpeechMemoryEntry>>(&data) else {
+        eprintln!(
+            "[iterate-speech] shared speech memory parse failed path={}",
+            path.display()
+        );
         return vec![];
     };
 
+    let raw_count = entries.len();
     let mut imported: Vec<DictEntry> = entries
         .into_iter()
         .filter(|entry| entry.is_enabled)
@@ -1097,6 +1107,12 @@ fn load_cunzhi_speech_memory_entries() -> Vec<DictEntry> {
             .unwrap_or_default()
             .cmp(&a.training_count.unwrap_or_default())
     });
+    eprintln!(
+        "[iterate-speech] loaded shared speech memory path={} raw={} imported={}",
+        path.display(),
+        raw_count,
+        imported.len()
+    );
     imported
 }
 
@@ -1106,19 +1122,34 @@ fn merge_dictionary_entries(mut local_entries: Vec<DictEntry>) -> Vec<DictEntry>
         .filter_map(normalize_dictionary_entry)
         .collect();
 
+    let local_count = local_entries.len();
     let mut seen = std::collections::HashSet::new();
     local_entries.retain(|entry| seen.insert(dictionary_entry_key(entry)));
+    let deduped_local_count = local_entries.len();
 
-    for entry in load_cunzhi_speech_memory_entries()
+    let shared_entries: Vec<DictEntry> = load_cunzhi_speech_memory_entries()
         .into_iter()
         .filter_map(normalize_dictionary_entry)
-    {
+        .collect();
+    let shared_count = shared_entries.len();
+    let mut shared_added_count = 0usize;
+
+    for entry in shared_entries {
         let key = dictionary_entry_key(&entry);
         if seen.insert(key) {
             local_entries.push(entry);
+            shared_added_count += 1;
         }
     }
 
+    eprintln!(
+        "[iterate-speech] dictionary merge local={} deduped_local={} shared={} shared_added={} merged={}",
+        local_count,
+        deduped_local_count,
+        shared_count,
+        shared_added_count,
+        local_entries.len()
+    );
     local_entries
 }
 
@@ -1146,11 +1177,25 @@ fn load_dictionary() -> Result<Vec<DictEntry>, String> {
                 path.display()
             );
         }
-        return Ok(merge_dictionary_entries(entries));
+        let merged_entries = merge_dictionary_entries(entries);
+        eprintln!(
+            "[iterate-speech] load_dictionary seeded path={} merged={}",
+            path.display(),
+            merged_entries.len()
+        );
+        return Ok(merged_entries);
     }
     let data = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let entries = serde_json::from_str(&data).unwrap_or_default();
-    Ok(merge_dictionary_entries(entries))
+    let entries: Vec<DictEntry> = serde_json::from_str(&data).unwrap_or_default();
+    let local_count = entries.len();
+    let merged_entries = merge_dictionary_entries(entries);
+    eprintln!(
+        "[iterate-speech] load_dictionary path={} local={} merged={}",
+        path.display(),
+        local_count,
+        merged_entries.len()
+    );
+    Ok(merged_entries)
 }
 
 // ---- General settings persistence ----
