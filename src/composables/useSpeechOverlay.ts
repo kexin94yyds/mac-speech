@@ -741,13 +741,11 @@ export function useSpeechOverlay() {
       }
 
       shouldCommitOnEnd = false
-      sessionPhase.value = text ? 'ready' : 'idle'
-      statusMessage.value = text
-        ? '录音结束，文本已保留在浮层里，等待你手动写回。'
-        : '没有拿到有效语音结果。'
-      if (!text) {
-        void hideOverlay()
-      }
+      transcript.value = ''
+      partialTranscript.value = ''
+      sessionPhase.value = 'idle'
+      statusMessage.value = '没有拿到有效语音结果。'
+      void hideOverlay()
     })
     unlistenNativeError = await listen<{ text: string }>('speech://native-error', async (event) => {
       clearStartFallbackTimer()
@@ -792,6 +790,8 @@ export function useSpeechOverlay() {
     partialTranscript,
     lastCommittedText,
     manualDraft,
+    activeModeId,
+    activeMode,
     statusMessage,
     diagnostics,
     micLevel,
