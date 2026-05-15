@@ -14,6 +14,9 @@ export interface DictionaryEntryLike {
   replacement?: string
   spokenPhrase?: string
   outputText?: string
+  trainingCount?: number
+  isEnabled?: boolean
+  source?: string
 }
 
 export interface EnhanceTranscriptInput {
