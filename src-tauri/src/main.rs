@@ -14,6 +14,10 @@ use tauri::{
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 const GLOBAL_SHORTCUT: &str = "Fn";
+const POLISH_SHORTCUT: &str = "Ctrl+1";
+const STRUCTURE_SHORTCUT: &str = "Ctrl+2";
+const POLISH_MODE_ID: &str = "polish";
+const STRUCTURE_MODE_ID: &str = "structure";
 const TOGGLE_EVENT: &str = "speech://toggle";
 const NATIVE_STARTED_EVENT: &str = "speech://native-started";
 const NATIVE_PARTIAL_EVENT: &str = "speech://native-partial";
@@ -86,6 +90,7 @@ fn install_overlay_position_persistence(overlay: &tauri::WebviewWindow) {
 #[derive(Clone, Serialize)]
 struct TogglePayload {
     shortcut: &'static str,
+    mode_id: &'static str,
     /// When true, the frontend must not call `remember_frontmost_app` again: the native Fn path
     /// already captured the target app before the overlay stole focus.
     #[serde(default)]
@@ -150,7 +155,10 @@ extern "C" fn native_speech_callback(
 
 #[cfg(target_os = "macos")]
 mod macos {
-    use super::{TogglePayload, GLOBAL_SHORTCUT, TOGGLE_EVENT};
+    use super::{
+        TogglePayload, GLOBAL_SHORTCUT, POLISH_MODE_ID, POLISH_SHORTCUT, STRUCTURE_MODE_ID,
+        STRUCTURE_SHORTCUT, TOGGLE_EVENT,
+    };
     use core_foundation::runloop::CFRunLoop;
     use core_graphics::event::{
         CallbackResult, CGEvent, CGEventFlags, CGEventTap, CGEventTapLocation,
@@ -167,6 +175,8 @@ mod macos {
     use tauri::{AppHandle, Emitter, Manager};
 
     const KEY_CODE_V: CGKeyCode = 9;
+    const KEY_CODE_1: CGKeyCode = 18;
+    const KEY_CODE_2: CGKeyCode = 19;
     const KEY_CODE_FN: CGKeyCode = 63;
 
     pub fn simulate_paste() -> Result<(), String> {
