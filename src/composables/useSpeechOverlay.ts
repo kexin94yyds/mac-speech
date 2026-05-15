@@ -242,7 +242,7 @@ export function useSpeechOverlay() {
       return { text: deterministicMatch.text, enhanced: true, deterministic: true }
     }
 
-    const shortFastPath = applyShortFastPath(trimmed, shortFastPathEnabled)
+    const shortFastPath = applyShortFastPath(trimmed, mode.shortFastPath && shortFastPathEnabled)
     if (shortFastPath) {
       const elapsedMs = Math.round(performance.now() - startedAt)
       statusMessage.value = '短句快通道命中，已跳过 Ollama。'
