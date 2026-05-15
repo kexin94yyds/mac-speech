@@ -14,10 +14,13 @@ typedef void (*SpeechBridgeCallback)(const char *event_type, const char *text, v
 @property (nonatomic, strong) AVAudioEngine *audioEngine;
 @property (nonatomic, strong) SFSpeechAudioBufferRecognitionRequest *recognitionRequest;
 @property (nonatomic, strong) SFSpeechRecognitionTask *recognitionTask;
+@property (nonatomic, copy) NSArray<NSString *> *contextualStrings;
 @property (nonatomic, assign) BOOL hasInputTap;
 
 + (instancetype)shared;
-- (void)startWithCallback:(SpeechBridgeCallback)callback userData:(void *)userData;
+- (void)startWithCallback:(SpeechBridgeCallback)callback
+                 userData:(void *)userData
+        contextualStrings:(NSArray<NSString *> *)contextualStrings;
 - (void)stop;
 
 @end
@@ -86,6 +89,14 @@ typedef void (*SpeechBridgeCallback)(const char *event_type, const char *text, v
     self.recognitionRequest = [[SFSpeechAudioBufferRecognitionRequest alloc] init];
     self.recognitionRequest.shouldReportPartialResults = YES;
     self.recognitionRequest.taskHint = SFSpeechRecognitionTaskHintDictation;
+    SEL addsPunctuationSelector = NSSelectorFromString(@"setAddsPunctuation:");
+    if ([self.recognitionRequest respondsToSelector:addsPunctuationSelector]) {
+        ((void (*)(id, SEL, BOOL))objc_msgSend)(self.recognitionRequest, addsPunctuationSelector, YES);
+    }
+    if (self.contextualStrings.count > 0 &&
+        [self.recognitionRequest respondsToSelector:@selector(setContextualStrings:)]) {
+        self.recognitionRequest.contextualStrings = self.contextualStrings;
+    }
     NSString *recognitionMode = @"system";
     SEL supportsOnDeviceSelector = NSSelectorFromString(@"supportsOnDeviceRecognition");
     SEL requiresOnDeviceSelector = NSSelectorFromString(@"setRequiresOnDeviceRecognition:");
