@@ -596,15 +596,42 @@ fn remember_frontmost_app() -> Result<(), String> {
 }
 
 #[tauri::command]
-fn start_native_speech() -> Result<(), String> {
-    eprintln!("[iterate-speech] start_native_speech invoked");
+fn start_native_speech(contextual_strings: Option<Vec<String>>) -> Result<(), String> {
+    let contextual_strings = contextual_strings.unwrap_or_default();
+    eprintln!(
+        "[iterate-speech] start_native_speech invoked contextual_count={}",
+        contextual_strings.len()
+    );
     #[cfg(target_os = "macos")]
     unsafe {
+        let c_contextual_strings: Vec<CString> = contextual_strings
+            .into_iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty() && value.len() <= 80)
+            .take(100)
+            .filter_map(|value| CString::new(value).ok())
+            .collect();
+        let contextual_ptrs: Vec<*const c_char> = c_contextual_strings
+            .iter()
+            .map(|value| value.as_ptr())
+            .collect();
+        let contextual_ptr = if contextual_ptrs.is_empty() {
+            std::ptr::null()
+        } else {
+            contextual_ptrs.as_ptr()
+        };
         // Always tear down any in-flight recognition before starting a new session.
         // Otherwise a later Fn press can leave the UI stuck in "starting" with no native-started.
         speech_bridge_stop();
-        speech_bridge_start(native_speech_callback, std::ptr::null_mut());
+        speech_bridge_start(
+            native_speech_callback,
+            std::ptr::null_mut(),
+            contextual_ptr,
+            contextual_ptrs.len(),
+        );
     }
+    #[cfg(not(target_os = "macos"))]
+    let _ = contextual_strings;
     Ok(())
 }
 
@@ -924,6 +951,10 @@ fn is_false(value: &bool) -> bool {
     !*value
 }
 
+fn default_true() -> bool {
+    true
+}
+
 fn default_dictionary_entries() -> Vec<DictEntry> {
     const WORDS: &[&str] = &[
         "VoiceInk",
@@ -1209,6 +1240,8 @@ struct GeneralSettings {
     show_in_dock: bool,
     hotkey: String,
     menu_bar_action: String,
+    #[serde(default = "default_true")]
+    short_fast_path_enabled: bool,
 }
 
 impl Default for GeneralSettings {
@@ -1219,6 +1252,7 @@ impl Default for GeneralSettings {
             show_in_dock: true,
             hotkey: "Fn / Ctrl+1 / Ctrl+2".into(),
             menu_bar_action: "toggle".into(),
+            short_fast_path_enabled: true,
         }
     }
 }
