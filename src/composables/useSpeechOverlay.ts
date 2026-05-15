@@ -838,15 +838,14 @@ export function useSpeechOverlay() {
     shortcut?: string
   } = {}) {
     if (processingFinalText.value) {
-      statusMessage.value = '上一段语音仍在智能整理中，请稍等。'
-      pushDiagnostic('processing lock blocked shortcut toggle')
+      await cancelActiveFinalization('shortcut-toggle-during-finalize')
       return
     }
 
     if (sessionPhase.value === 'listening') {
-      const hasText = iosStyleDraft.resolveTranscript(partialTranscript.value, transcript.value).trim()
-      // hasText=false 时仍须等 native-final（仅 final、无 partial 时这里也为空，不能用「秒取消」抢在 final 前把 phase 置 idle，否则不写历史）
-      stopListening(Boolean(hasText))
+      // 第二次快捷键的语义是“停止并提交”。即使 partial 还没到，也等待 native-final；
+      // 若最终没有文本，再由 fallback 超时隐藏浮层。
+      stopListening(true)
       return
     }
 
@@ -869,6 +868,13 @@ export function useSpeechOverlay() {
       sessionPhase.value = 'idle'
       statusMessage.value = '已取消正在启动的语音识别。'
       await invoke('stop_native_speech')
+      await hideOverlay()
+      return
+    }
+
+    if (sessionPhase.value === 'ready' && (transcript.value || partialTranscript.value || manualDraft.value)) {
+      clearSession()
+      statusMessage.value = '已关闭本次语音结果。'
       await hideOverlay()
       return
     }
