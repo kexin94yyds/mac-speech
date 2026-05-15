@@ -8,7 +8,9 @@
     "build": "vite build",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "open:mac": "open ./src-tauri/target/release/bundle/macos/iterate-speech.app"
+    "tauri:build:lab": "tauri build --config src-tauri/tauri.lab.conf.json",
+    "open:mac": "open ./src-tauri/target/release/bundle/macos/iterate-speech.app",
+    "open:lab": "open ./src-tauri/target/release/bundle/macos/iterate-speech-lab.app"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.10.1",

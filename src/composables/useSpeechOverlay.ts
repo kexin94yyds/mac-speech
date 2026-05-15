@@ -3,6 +3,8 @@ import { invoke } from '@tauri-apps/api/core'
 import { emit, listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { transcribeAudioBlob } from '../engines/localWhisperTranscriber'
+import { IOS_STYLE_DRAFT_EXPERIMENT, IS_LAB_VARIANT } from '../config/appVariant'
+import { useIosStyleSpeechDraft } from './useIosStyleSpeechDraft'
 
 type SessionPhase = 'idle' | 'starting' | 'listening' | 'stopping' | 'ready' | 'unsupported' | 'error'
 
@@ -13,6 +15,7 @@ let lastHistoryEntryId: number | null = null
 let lastHistoryText = ''
 
 export function useSpeechOverlay() {
+  const iosStyleDraft = useIosStyleSpeechDraft(IOS_STYLE_DRAFT_EXPERIMENT)
   const sessionPhase = ref<SessionPhase>('idle')
   const permissionGranted = ref(false)
   const transcript = ref('')
@@ -21,7 +24,9 @@ export function useSpeechOverlay() {
   const manualDraft = ref('')
   const statusMessage = ref('等待 Fn 唤起录音。')
   const diagnostics = ref<string[]>([
-    '当前策略：按 Fn 开始语音输入；优先实时识别，异常时再回退到本地 Whisper。'
+    IOS_STYLE_DRAFT_EXPERIMENT
+      ? '当前策略：lab 实验版启用 iOS 风格草稿分段骨架；识别仍是原生 Speech.framework，外部实时回改尚未接通。'
+      : '当前策略：按 Fn 开始语音输入；优先实时识别，异常时再回退到本地 Whisper。'
   ])
   const micLevel = ref(0)
 
@@ -94,6 +99,10 @@ export function useSpeechOverlay() {
   })
 
   const displayTranscript = computed(() => {
+    const experimentalDraft = iosStyleDraft.draftTranscript.value
+    if (IOS_STYLE_DRAFT_EXPERIMENT && experimentalDraft) {
+      return experimentalDraft
+    }
     if (partialTranscript.value) {
       return partialTranscript.value
     }
@@ -124,7 +133,7 @@ export function useSpeechOverlay() {
   )
 
   const canCommit = computed(() =>
-    Boolean((transcript.value || manualDraft.value || partialTranscript.value).trim())
+    Boolean((iosStyleDraft.resolveTranscript(partialTranscript.value, transcript.value) || manualDraft.value).trim())
   )
 
   function pushDiagnostic(message: string) {
@@ -282,6 +291,7 @@ export function useSpeechOverlay() {
     micLevel.value = 0
     lastHistoryEntryId = null
     lastHistoryText = ''
+    iosStyleDraft.reset()
   }
 
   async function refreshAccessibilityStatus() {
@@ -354,6 +364,7 @@ export function useSpeechOverlay() {
     )
     transcript.value = ''
     partialTranscript.value = ''
+    iosStyleDraft.reset()
     shouldCommitOnEnd = false
     lastHistoryEntryId = null
     lastHistoryText = ''
@@ -399,7 +410,7 @@ export function useSpeechOverlay() {
   function stopListening(commitOnEnd: boolean) {
     clearStopFallbackTimer()
     clearStartFallbackTimer()
-    const immediateCommitText = (transcript.value || partialTranscript.value).trim()
+    const immediateCommitText = iosStyleDraft.resolveTranscript(partialTranscript.value, transcript.value).trim()
 
     if (commitOnEnd && immediateCommitText) {
       shouldCommitOnEnd = false
@@ -430,7 +441,7 @@ export function useSpeechOverlay() {
       }
 
       clearStopFallbackTimer()
-      const commitText = (transcript.value || partialTranscript.value).trim()
+      const commitText = iosStyleDraft.resolveTranscript(partialTranscript.value, transcript.value).trim()
       if (commitOnEnd && commitText) {
         shouldCommitOnEnd = false
         await commitTextToTarget(commitText)
@@ -489,6 +500,7 @@ export function useSpeechOverlay() {
       manualDraft.value = ''
       transcript.value = ''
       partialTranscript.value = ''
+      iosStyleDraft.reset()
       sessionPhase.value = 'ready'
       statusMessage.value = '已尝试把文本写回当前聚焦输入区。'
       pushDiagnostic(`已写回：${trimmed.slice(0, 40)}`)
@@ -523,7 +535,7 @@ export function useSpeechOverlay() {
 
   async function handleGlobalToggle(skipTargetCapture = false) {
     if (sessionPhase.value === 'listening') {
-      const hasText = (transcript.value || partialTranscript.value).trim()
+      const hasText = iosStyleDraft.resolveTranscript(partialTranscript.value, transcript.value).trim()
       // hasText=false 时仍须等 native-final（仅 final、无 partial 时这里也为空，不能用「秒取消」抢在 final 前把 phase 置 idle，否则不写历史）
       stopListening(Boolean(hasText))
       return
@@ -557,7 +569,8 @@ export function useSpeechOverlay() {
 
   async function commitFromPanel() {
     const preferredText = transcript.value || partialTranscript.value || manualDraft.value
-    await commitTextToTarget(preferredText)
+    const resolvedTranscript = iosStyleDraft.resolveTranscript(partialTranscript.value, transcript.value)
+    await commitTextToTarget(resolvedTranscript || preferredText)
   }
 
   async function initialize() {
@@ -572,7 +585,9 @@ export function useSpeechOverlay() {
     } catch (error) {
       pushDiagnostic(`输入监控权限请求失败：${String(error)}`)
     }
-    statusMessage.value = '等待 Fn 唤起原生实时语音输入。'
+    statusMessage.value = IOS_STYLE_DRAFT_EXPERIMENT
+      ? '等待 Fn 唤起原生实时语音输入。当前为 lab 实验版：优先验证 iOS 风格草稿分段。'
+      : '等待 Fn 唤起原生实时语音输入。'
 
     visibilityRefreshHandler = () => {
       if (document.visibilityState === 'visible')
@@ -608,11 +623,17 @@ export function useSpeechOverlay() {
     unlistenNativePartial = await listen<{ text: string }>('speech://native-partial', async (event) => {
       clearStartFallbackTimer()
       partialTranscript.value = event.payload.text || ''
+      if (IOS_STYLE_DRAFT_EXPERIMENT) {
+        iosStyleDraft.ingestPartial(partialTranscript.value)
+      }
     })
     unlistenNativeFinal = await listen<{ text: string }>('speech://native-final', async (event) => {
       clearStartFallbackTimer()
       clearStopFallbackTimer()
-      const text = (event.payload.text || '').trim()
+      const rawText = (event.payload.text || '').trim()
+      const text = IOS_STYLE_DRAFT_EXPERIMENT
+        ? iosStyleDraft.ingestFinal(rawText).trim()
+        : rawText
 
       // 仅在显式取消时忽略迟到 final；否则（例如 fallback 先 idle、final 晚到）仍要接收。
       if (ignoreLateNativeFinal && sessionPhase.value === 'idle') {
@@ -685,6 +706,10 @@ export function useSpeechOverlay() {
 
   return {
     overlayShortcut,
+    isLabVariant: IS_LAB_VARIANT,
+    iosStyleDraftExperiment: IOS_STYLE_DRAFT_EXPERIMENT,
+    iosStyleDraftTranscript: iosStyleDraft.draftTranscript,
+    iosStyleCommittedSegmentCount: iosStyleDraft.committedSegmentCount,
     sessionPhase,
     permissionGranted,
     transcript,

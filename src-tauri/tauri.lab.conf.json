@@ -1,0 +1,63 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "iterate-speech-lab",
+  "version": "0.1.0",
+  "identifier": "xin.iterate.speech.lab",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "VITE_APP_VARIANT=lab npm run dev",
+    "beforeBuildCommand": "VITE_APP_VARIANT=lab npm run build"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "iterate-speech-lab",
+        "url": "index.html",
+        "width": 1040,
+        "height": 760,
+        "minWidth": 920,
+        "minHeight": 680,
+        "resizable": true,
+        "decorations": true,
+        "transparent": false,
+        "visible": true,
+        "focus": true,
+        "center": true
+      },
+      {
+        "label": "overlay",
+        "title": "iterate-speech-lab-overlay",
+        "url": "index.html?view=overlay",
+        "width": 96,
+        "height": 48,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "visible": false,
+        "focus": false,
+        "alwaysOnTop": true,
+        "visibleOnAllWorkspaces": true,
+        "skipTaskbar": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/64x64.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    }
+  }
+}

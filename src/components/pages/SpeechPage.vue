@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { IOS_STYLE_DRAFT_EXPERIMENT, IS_LAB_VARIANT } from '../../config/appVariant'
 
 const language = ref('zh-CN')
 const recognitionMode = ref('native')
@@ -12,6 +13,24 @@ const fallbackStrategy = ref('whisper')
   <div class="page">
     <h2 class="page-title">语音设置</h2>
     <p class="page-desc">配置语言、识别模式和写回策略。</p>
+
+    <section v-if="IS_LAB_VARIANT" class="card card-accent">
+      <h3 class="card-title">实验线</h3>
+      <div class="setting-row setting-row-stack">
+        <div>
+          <p class="setting-label">当前包</p>
+          <p class="setting-desc">这是独立的 `iterate-speech-lab`，不会覆盖主版。</p>
+        </div>
+        <div>
+          <p class="setting-label">iOS 风格草稿实验</p>
+          <p class="setting-desc">
+            {{ IOS_STYLE_DRAFT_EXPERIMENT
+              ? '已启用：先验证停顿切段、partial 重启和多段草稿聚合；外部输入框实时回改后续再补。'
+              : '未启用。' }}
+          </p>
+        </div>
+      </div>
+    </section>
 
     <section class="card">
       <h3 class="card-title">识别引擎</h3>
