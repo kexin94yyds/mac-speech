@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::ffi::{c_char, c_void, CStr};
+use std::ffi::{c_char, c_void, CStr, CString};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::thread;
@@ -115,6 +115,8 @@ unsafe extern "C" {
     fn speech_bridge_start(
         callback: extern "C" fn(*const c_char, *const c_char, *mut c_void),
         user_data: *mut c_void,
+        contextual_strings: *const *const c_char,
+        contextual_count: usize,
     );
     fn speech_bridge_stop();
 }
