@@ -980,8 +980,13 @@ export function useSpeechOverlay() {
     unlistenNativeError = await listen<{ text: string }>('speech://native-error', async (event) => {
       clearStartFallbackTimer()
       clearStopFallbackTimer()
+      const errorText = event.payload.text || '未知错误'
+      if (processingFinalText.value || sessionPhase.value === 'stopping') {
+        await debugLog(`native error ignored during stop/finalize phase=${sessionPhase.value} processing=${processingFinalText.value} text=${errorText}`)
+        return
+      }
       sessionPhase.value = 'error'
-      statusMessage.value = `语音识别失败：${event.payload.text || '未知错误'}`
+      statusMessage.value = `语音识别失败：${errorText}`
       pushDiagnostic(statusMessage.value)
       shouldCommitOnEnd = false
       stopMeter()
