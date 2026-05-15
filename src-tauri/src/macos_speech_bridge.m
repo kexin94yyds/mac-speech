@@ -214,10 +214,28 @@ typedef void (*SpeechBridgeCallback)(const char *event_type, const char *text, v
 
 @end
 
-void speech_bridge_start(SpeechBridgeCallback callback, void *user_data) {
+void speech_bridge_start(SpeechBridgeCallback callback,
+                         void *user_data,
+                         const char **contextual_strings,
+                         size_t contextual_count) {
     // Tauri commands may invoke this off the main queue; AVAudioEngine + Speech must run on main.
     // Coalesce rapid stop+start (e.g. double Fn): only the latest scheduled start may run, so stale
     // async blocks cannot resurrect a half-torn session ("mic won't open" until app restart).
+    NSMutableArray<NSString *> *phrases = [NSMutableArray arrayWithCapacity:contextual_count];
+    if (contextual_strings != NULL) {
+        NSCharacterSet *trimSet = [NSCharacterSet whitespaceAndNewlineCharacterSet];
+        for (size_t i = 0; i < contextual_count && phrases.count < 100; i++) {
+            const char *rawPhrase = contextual_strings[i];
+            if (rawPhrase == NULL) {
+                continue;
+            }
+            NSString *phrase = [[NSString stringWithUTF8String:rawPhrase] stringByTrimmingCharactersInSet:trimSet];
+            if (phrase.length > 0) {
+                [phrases addObject:phrase];
+            }
+        }
+    }
+    NSArray<NSString *> *contextualSnapshot = [phrases copy];
     static _Atomic uint64_t g_start_generation = 0;
     uint64_t mine = atomic_fetch_add(&g_start_generation, 1) + 1;
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -225,7 +243,9 @@ void speech_bridge_start(SpeechBridgeCallback callback, void *user_data) {
         if (mine != current) {
             return;
         }
-        [[IterateSpeechBridge shared] startWithCallback:callback userData:user_data];
+        [[IterateSpeechBridge shared] startWithCallback:callback
+                                              userData:user_data
+                                     contextualStrings:contextualSnapshot];
     });
 }
 
