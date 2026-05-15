@@ -155,8 +155,8 @@ extern "C" fn native_speech_callback(
 #[cfg(target_os = "macos")]
 mod macos {
     use super::{
-        TogglePayload, GLOBAL_SHORTCUT, POLISH_MODE_ID, POLISH_SHORTCUT, STRUCTURE_MODE_ID,
-        STRUCTURE_SHORTCUT, TOGGLE_EVENT,
+        TogglePayload, GLOBAL_SHORTCUT, POLISH_SHORTCUT, SMART_MODE_ID, STRUCTURE_SHORTCUT,
+        TOGGLE_EVENT,
     };
     use core_foundation::runloop::CFRunLoop;
     use core_graphics::event::{
@@ -326,8 +326,8 @@ mod macos {
                         }
 
                         let Some((shortcut, mode_id)) = (match keycode {
-                            KEY_CODE_1 => Some((POLISH_SHORTCUT, POLISH_MODE_ID)),
-                            KEY_CODE_2 => Some((STRUCTURE_SHORTCUT, STRUCTURE_MODE_ID)),
+                            KEY_CODE_1 => Some((POLISH_SHORTCUT, SMART_MODE_ID)),
+                            KEY_CODE_2 => Some((STRUCTURE_SHORTCUT, SMART_MODE_ID)),
                             _ => None,
                         }) else {
                             return CallbackResult::Keep;
@@ -389,7 +389,7 @@ mod macos {
                                     TOGGLE_EVENT,
                                     TogglePayload {
                                         shortcut: GLOBAL_SHORTCUT,
-                                        mode_id: POLISH_MODE_ID,
+                                        mode_id: SMART_MODE_ID,
                                         skip_target_capture: true,
                                     },
                                 );
@@ -698,7 +698,7 @@ fn trigger_overlay_toggle(app: &tauri::AppHandle) {
             TOGGLE_EVENT,
             TogglePayload {
                 shortcut: GLOBAL_SHORTCUT,
-                mode_id: POLISH_MODE_ID,
+                mode_id: SMART_MODE_ID,
                 skip_target_capture: true,
             },
         );
