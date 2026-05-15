@@ -86,6 +86,79 @@ export function useSpeechOverlay() {
     }
   }
 
+  async function loadDictionaryEntriesBestEffort() {
+    try {
+      return await invoke<DictionaryEntryLike[]>('load_dictionary')
+    } catch {
+      await debugLog('dictionary load skipped before enhancement')
+      return []
+    }
+  }
+
+  async function enhanceWithActiveMode(rawText: string) {
+    const mode = activeMode.value
+    const trimmed = rawText.trim()
+    if (!trimmed) {
+      return { text: '', enhanced: false }
+    }
+
+    statusMessage.value = `正在用 ${mode.ollamaModel} 处理「${mode.name}」。`
+    pushDiagnostic(`开始 ${mode.name}：${trimmed.slice(0, 40)}`)
+    await debugLog(`enhance start mode=${mode.id} len=${trimmed.length}`)
+
+    try {
+      const dictionaryEntries = await loadDictionaryEntriesBestEffort()
+      const enhancedText = await enhanceTranscript({
+        text: trimmed,
+        mode,
+        dictionaryEntries,
+      })
+      await debugLog(`enhance ok mode=${mode.id} len=${enhancedText.length}`)
+      return { text: enhancedText.trim() || trimmed, enhanced: true }
+    } catch (error) {
+      const message = `Ollama 增强失败，已回退原始转写：${String(error)}`
+      statusMessage.value = message
+      pushDiagnostic(message)
+      await debugLog(`enhance failed mode=${mode.id} error=${String(error)}`)
+      return { text: trimmed, enhanced: false }
+    }
+  }
+
+  async function finalizeRecognizedText(rawText: string, commitOnEnd: boolean) {
+    const trimmedRaw = rawText.trim()
+    if (!trimmedRaw) {
+      shouldCommitOnEnd = false
+      sessionPhase.value = 'idle'
+      statusMessage.value = '没有拿到有效语音结果。'
+      await hideOverlay()
+      return
+    }
+
+    const mode = activeMode.value
+    const result = await enhanceWithActiveMode(trimmedRaw)
+    const finalText = result.text.trim()
+
+    transcript.value = finalText
+    partialTranscript.value = ''
+    iosStyleDraft.reset()
+
+    const appendedId = await appendHistoryBestEffort(finalText, false)
+    shouldCommitOnEnd = false
+    sessionPhase.value = 'ready'
+
+    if (commitOnEnd) {
+      statusMessage.value = result.enhanced
+        ? `「${mode.name}」完成，正在写回当前输入区。`
+        : '已回退使用原始转写，正在写回当前输入区。'
+      await commitTextToTarget(finalText, appendedId)
+      return
+    }
+
+    statusMessage.value = result.enhanced
+      ? `「${mode.name}」完成，文本已保留在浮层里。`
+      : 'Ollama 增强失败，原始转写已保留在浮层里。'
+  }
+
   const phaseLabel = computed(() => {
     switch (sessionPhase.value) {
       case 'starting':
