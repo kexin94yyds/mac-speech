@@ -315,15 +315,53 @@ mod macos {
                 CGEventTapLocation::HID,
                 CGEventTapPlacement::HeadInsertEventTap,
                 CGEventTapOptions::ListenOnly,
-                vec![CGEventType::FlagsChanged],
+                vec![CGEventType::FlagsChanged, CGEventType::KeyDown],
                 move |_proxy, event_type, event| {
-                    if !matches!(event_type, CGEventType::FlagsChanged) {
+                    let keycode =
+                        event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE) as CGKeyCode;
+
+                    if matches!(event_type, CGEventType::KeyDown) {
+                        let flags = event.get_flags();
+                        if !flags.contains(CGEventFlags::CGEventFlagControl) {
+                            return CallbackResult::Keep;
+                        }
+
+                        let Some((shortcut, mode_id)) = (match keycode {
+                            KEY_CODE_1 => Some((POLISH_SHORTCUT, POLISH_MODE_ID)),
+                            KEY_CODE_2 => Some((STRUCTURE_SHORTCUT, STRUCTURE_MODE_ID)),
+                            _ => None,
+                        }) else {
+                            return CallbackResult::Keep;
+                        };
+
+                        eprintln!("[iterate-speech] {shortcut} toggle received mode={mode_id}");
+                        let app_for_toggle = tap_app.clone();
+
+                        if let Err(error) = super::capture_frontmost_target_app() {
+                            eprintln!(
+                                "[iterate-speech] capture frontmost before overlay failed: {error}"
+                            );
+                        }
+
+                        if let Some(window) = tap_app.get_webview_window("overlay") {
+                            super::reveal_overlay_anchor(&window);
+                        }
+
+                        thread::spawn(move || {
+                            thread::sleep(Duration::from_millis(220));
+                            let _ = app_for_toggle.emit(
+                                TOGGLE_EVENT,
+                                TogglePayload {
+                                    shortcut,
+                                    mode_id,
+                                    skip_target_capture: true,
+                                },
+                            );
+                        });
                         return CallbackResult::Keep;
                     }
 
-                    let keycode =
-                        event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE) as CGKeyCode;
-                    if keycode != KEY_CODE_FN {
+                    if !matches!(event_type, CGEventType::FlagsChanged) || keycode != KEY_CODE_FN {
                         return CallbackResult::Keep;
                     }
 
@@ -352,6 +390,7 @@ mod macos {
                                     TOGGLE_EVENT,
                                     TogglePayload {
                                         shortcut: GLOBAL_SHORTCUT,
+                                        mode_id: POLISH_MODE_ID,
                                         skip_target_capture: true,
                                     },
                                 );
@@ -660,6 +699,7 @@ fn trigger_overlay_toggle(app: &tauri::AppHandle) {
             TOGGLE_EVENT,
             TogglePayload {
                 shortcut: GLOBAL_SHORTCUT,
+                mode_id: POLISH_MODE_ID,
                 skip_target_capture: true,
             },
         );
