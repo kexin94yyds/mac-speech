@@ -154,8 +154,7 @@ extern "C" fn native_speech_callback(
 mod macos {
     use super::{
         TogglePayload, GLOBAL_SHORTCUT, POLISH_MODE_ID, POLISH_SHORTCUT, STRUCTURE_MODE_ID,
-        STRUCTURE_SHORTCUT,
-        TOGGLE_EVENT,
+        STRUCTURE_SHORTCUT, TOGGLE_EVENT,
     };
     use core_foundation::runloop::CFRunLoop;
     use core_graphics::event::{
