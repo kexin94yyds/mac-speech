@@ -372,6 +372,10 @@ onUnmounted(() => {
   border: 1px solid rgba(92, 54, 28, 0.06);
 }
 
+.trigger-card + .trigger-card {
+  margin-top: 10px;
+}
+
 .trigger-key {
   width: 48px;
   height: 48px;
