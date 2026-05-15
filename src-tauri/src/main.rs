@@ -855,8 +855,28 @@ fn load_history() -> Result<Vec<HistoryEntry>, String> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DictEntry {
     id: u64,
+    #[serde(default)]
     word: String,
+    #[serde(default)]
     replacement: String,
+    #[serde(rename = "spokenPhrase", default, skip_serializing_if = "Option::is_none")]
+    spoken_phrase: Option<String>,
+    #[serde(rename = "outputText", default, skip_serializing_if = "Option::is_none")]
+    output_text: Option<String>,
+    #[serde(rename = "trainingCount", default, skip_serializing_if = "Option::is_none")]
+    training_count: Option<u64>,
+    #[serde(rename = "isEnabled", default, skip_serializing_if = "Option::is_none")]
+    is_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source: Option<String>,
+    #[serde(rename = "externalId", default, skip_serializing_if = "Option::is_none")]
+    external_id: Option<String>,
+    #[serde(rename = "readOnly", default, skip_serializing_if = "is_false")]
+    read_only: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 fn default_dictionary_entries() -> Vec<DictEntry> {
@@ -888,6 +908,13 @@ fn default_dictionary_entries() -> Vec<DictEntry> {
             id: (index + 1) as u64,
             word: (*word).into(),
             replacement: (*word).into(),
+            spoken_phrase: Some((*word).into()),
+            output_text: Some((*word).into()),
+            training_count: Some(0),
+            is_enabled: Some(true),
+            source: Some("seed".into()),
+            external_id: None,
+            read_only: false,
         })
         .collect()
 }
@@ -900,10 +927,167 @@ fn dictionary_file_path() -> PathBuf {
     base.join("dictionary.json")
 }
 
+fn cunzhi_speech_memory_file_path() -> Option<PathBuf> {
+    Some(PathBuf::from(std::env::var_os("HOME")?).join(".cunzhi/speech-muscle-memory.json"))
+}
+
+fn normalize_dictionary_key(value: &str) -> String {
+    value
+        .trim()
+        .to_lowercase()
+        .chars()
+        .filter(|ch| ch.is_alphanumeric() || ('\u{4e00}'..='\u{9fff}').contains(ch))
+        .collect()
+}
+
+fn dictionary_entry_key(entry: &DictEntry) -> String {
+    let word = normalize_dictionary_key(&entry.word);
+    let replacement = normalize_dictionary_key(&entry.replacement);
+    format!("{word}->{replacement}")
+}
+
+fn stable_imported_entry_id(external_id: &str, word: &str, replacement: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    external_id.hash(&mut hasher);
+    word.hash(&mut hasher);
+    replacement.hash(&mut hasher);
+    10_000_000_000 + (hasher.finish() % 1_000_000_000)
+}
+
+fn normalize_dictionary_entry(mut entry: DictEntry) -> Option<DictEntry> {
+    if entry.word.trim().is_empty() {
+        if let Some(spoken_phrase) = entry.spoken_phrase.as_deref() {
+            entry.word = spoken_phrase.trim().to_string();
+        }
+    }
+    if entry.replacement.trim().is_empty() {
+        if let Some(output_text) = entry.output_text.as_deref() {
+            entry.replacement = output_text.trim().to_string();
+        }
+    }
+    if entry.word.trim().is_empty() {
+        return None;
+    }
+    if entry.replacement.trim().is_empty() {
+        entry.replacement = entry.word.clone();
+    }
+    if entry.spoken_phrase.is_none() {
+        entry.spoken_phrase = Some(entry.word.clone());
+    }
+    if entry.output_text.is_none() {
+        entry.output_text = Some(entry.replacement.clone());
+    }
+    if entry.is_enabled.is_none() {
+        entry.is_enabled = Some(true);
+    }
+    Some(entry)
+}
+
+#[derive(Debug, Deserialize)]
+struct CunzhiSpeechMemoryEntry {
+    #[serde(default)]
+    id: serde_json::Value,
+    #[serde(rename = "spokenPhrase", default)]
+    spoken_phrase: String,
+    #[serde(rename = "outputText", default)]
+    output_text: String,
+    #[serde(rename = "trainingCount", default)]
+    training_count: u64,
+    #[serde(rename = "isEnabled", default = "default_true")]
+    is_enabled: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn load_cunzhi_speech_memory_entries() -> Vec<DictEntry> {
+    let Some(path) = cunzhi_speech_memory_file_path() else {
+        return vec![];
+    };
+    let Ok(data) = std::fs::read_to_string(path) else {
+        return vec![];
+    };
+    let Ok(entries) = serde_json::from_str::<Vec<CunzhiSpeechMemoryEntry>>(&data) else {
+        return vec![];
+    };
+
+    let mut imported: Vec<DictEntry> = entries
+        .into_iter()
+        .filter(|entry| entry.is_enabled)
+        .filter_map(|entry| {
+            let word = entry.spoken_phrase.trim().to_string();
+            if word.is_empty() {
+                return None;
+            }
+            let replacement = if entry.output_text.trim().is_empty() {
+                word.clone()
+            } else {
+                entry.output_text.trim().to_string()
+            };
+            let external_id = match entry.id {
+                serde_json::Value::String(value) => value,
+                serde_json::Value::Number(value) => value.to_string(),
+                _ => format!("{word}->{replacement}"),
+            };
+            let id = stable_imported_entry_id(&external_id, &word, &replacement);
+
+            Some(DictEntry {
+                id,
+                word: word.clone(),
+                replacement: replacement.clone(),
+                spoken_phrase: Some(word),
+                output_text: Some(replacement),
+                training_count: Some(entry.training_count),
+                is_enabled: Some(true),
+                source: Some("cunzhi".into()),
+                external_id: Some(external_id),
+                read_only: true,
+            })
+        })
+        .collect();
+
+    imported.sort_by(|a, b| {
+        b.training_count
+            .unwrap_or_default()
+            .cmp(&a.training_count.unwrap_or_default())
+    });
+    imported
+}
+
+fn merge_dictionary_entries(mut local_entries: Vec<DictEntry>) -> Vec<DictEntry> {
+    local_entries = local_entries
+        .into_iter()
+        .filter_map(normalize_dictionary_entry)
+        .collect();
+
+    let mut seen = std::collections::HashSet::new();
+    local_entries.retain(|entry| seen.insert(dictionary_entry_key(entry)));
+
+    for entry in load_cunzhi_speech_memory_entries()
+        .into_iter()
+        .filter_map(normalize_dictionary_entry)
+    {
+        let key = dictionary_entry_key(&entry);
+        if seen.insert(key) {
+            local_entries.push(entry);
+        }
+    }
+
+    local_entries
+}
+
 #[tauri::command]
 fn save_dictionary(entries: Vec<DictEntry>) -> Result<(), String> {
     let path = dictionary_file_path();
-    let json = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
+    let local_entries: Vec<DictEntry> = entries
+        .into_iter()
+        .filter(|entry| !entry.read_only && entry.source.as_deref() != Some("cunzhi"))
+        .filter_map(normalize_dictionary_entry)
+        .collect();
+    let json = serde_json::to_string_pretty(&local_entries).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| e.to_string())
 }
 
@@ -919,10 +1103,11 @@ fn load_dictionary() -> Result<Vec<DictEntry>, String> {
                 path.display()
             );
         }
-        return Ok(entries);
+        return Ok(merge_dictionary_entries(entries));
     }
     let data = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    Ok(serde_json::from_str(&data).unwrap_or_default())
+    let entries = serde_json::from_str(&data).unwrap_or_default();
+    Ok(merge_dictionary_entries(entries))
 }
 
 // ---- General settings persistence ----
