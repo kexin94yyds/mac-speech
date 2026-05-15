@@ -16,7 +16,8 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 const GLOBAL_SHORTCUT: &str = "Fn";
 const POLISH_SHORTCUT: &str = "Ctrl+1";
 const STRUCTURE_SHORTCUT: &str = "Ctrl+2";
-const SMART_MODE_ID: &str = "smart";
+const POLISH_MODE_ID: &str = "polish";
+const STRUCTURE_MODE_ID: &str = "structure";
 const TOGGLE_EVENT: &str = "speech://toggle";
 const NATIVE_STARTED_EVENT: &str = "speech://native-started";
 const NATIVE_PARTIAL_EVENT: &str = "speech://native-partial";
@@ -152,7 +153,8 @@ extern "C" fn native_speech_callback(
 #[cfg(target_os = "macos")]
 mod macos {
     use super::{
-        TogglePayload, GLOBAL_SHORTCUT, POLISH_SHORTCUT, SMART_MODE_ID, STRUCTURE_SHORTCUT,
+        TogglePayload, GLOBAL_SHORTCUT, POLISH_MODE_ID, POLISH_SHORTCUT, STRUCTURE_MODE_ID,
+        STRUCTURE_SHORTCUT,
         TOGGLE_EVENT,
     };
     use core_foundation::runloop::CFRunLoop;
@@ -327,8 +329,8 @@ mod macos {
                         }
 
                         let Some((shortcut, mode_id)) = (match keycode {
-                            KEY_CODE_1 => Some((POLISH_SHORTCUT, SMART_MODE_ID)),
-                            KEY_CODE_2 => Some((STRUCTURE_SHORTCUT, SMART_MODE_ID)),
+                            KEY_CODE_1 => Some((POLISH_SHORTCUT, POLISH_MODE_ID)),
+                            KEY_CODE_2 => Some((STRUCTURE_SHORTCUT, STRUCTURE_MODE_ID)),
                             _ => None,
                         }) else {
                             return CallbackResult::Keep;
@@ -390,7 +392,7 @@ mod macos {
                                     TOGGLE_EVENT,
                                     TogglePayload {
                                         shortcut: GLOBAL_SHORTCUT,
-                                        mode_id: SMART_MODE_ID,
+                                        mode_id: POLISH_MODE_ID,
                                         skip_target_capture: true,
                                     },
                                 );
@@ -726,7 +728,7 @@ fn trigger_overlay_toggle(app: &tauri::AppHandle) {
             TOGGLE_EVENT,
             TogglePayload {
                 shortcut: GLOBAL_SHORTCUT,
-                mode_id: SMART_MODE_ID,
+                mode_id: POLISH_MODE_ID,
                 skip_target_capture: true,
             },
         );
