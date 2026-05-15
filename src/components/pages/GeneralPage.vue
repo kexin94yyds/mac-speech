@@ -5,7 +5,7 @@ import { invoke } from '@tauri-apps/api/core'
 const launchAtLogin = ref(false)
 const showInMenuBar = ref(true)
 const showInDock = ref(true)
-const hotkey = ref('Fn')
+const hotkey = ref('Fn / Ctrl+1 / Ctrl+2')
 const menuBarAction = ref('toggle')
 const loaded = ref(false)
 
@@ -100,9 +100,9 @@ watch([launchAtLogin, showInMenuBar, showInDock, hotkey, menuBarAction], () => {
       <div class="setting-row">
         <div>
           <p class="setting-label">录音热键</p>
-          <p class="setting-desc">按一次开始监听，再按一次停止并将文本写入当前输入框。</p>
+          <p class="setting-desc">Fn / Ctrl+1 触发中文润色，Ctrl+2 触发结构化整理。</p>
         </div>
-        <div class="key-badge">{{ hotkey }}</div>
+        <div class="key-badge">Fn / Ctrl+1 / Ctrl+2</div>
       </div>
       <div class="divider" />
       <div class="setting-row">
