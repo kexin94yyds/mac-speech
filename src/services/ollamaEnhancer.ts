@@ -7,6 +7,12 @@ interface OllamaChatResponse {
     content?: string
   }
   error?: string
+  total_duration?: number
+  load_duration?: number
+  prompt_eval_count?: number
+  prompt_eval_duration?: number
+  eval_count?: number
+  eval_duration?: number
 }
 
 export interface DictionaryEntryLike {
@@ -23,6 +29,24 @@ export interface EnhanceTranscriptInput {
   text: string
   mode: SpeechMode
   dictionaryEntries?: DictionaryEntryLike[]
+}
+
+export interface OllamaDurationMetrics {
+  totalDurationMs?: number
+  loadDurationMs?: number
+  promptEvalCount?: number
+  promptEvalDurationMs?: number
+  evalCount?: number
+  evalDurationMs?: number
+}
+
+export interface EnhanceTranscriptResult {
+  text: string
+  metrics?: OllamaDurationMetrics
+}
+
+function nanosToMs(value?: number) {
+  return typeof value === 'number' ? Math.round(value / 1_000_000) : undefined
 }
 
 function buildDictionaryBlock(entries: DictionaryEntryLike[] = []) {
@@ -77,7 +101,7 @@ function resolveNumPredict(text: string) {
 export async function enhanceTranscript(input: EnhanceTranscriptInput) {
   const trimmed = input.text.trim()
   if (!trimmed) {
-    return ''
+    return { text: '' }
   }
 
   const controller = new AbortController()
@@ -122,7 +146,17 @@ export async function enhanceTranscript(input: EnhanceTranscriptInput) {
       throw new Error('Ollama returned empty text')
     }
 
-    return enhanced
+    return {
+      text: enhanced,
+      metrics: {
+        totalDurationMs: nanosToMs(payload.total_duration),
+        loadDurationMs: nanosToMs(payload.load_duration),
+        promptEvalCount: payload.prompt_eval_count,
+        promptEvalDurationMs: nanosToMs(payload.prompt_eval_duration),
+        evalCount: payload.eval_count,
+        evalDurationMs: nanosToMs(payload.eval_duration),
+      },
+    }
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw new Error(`Ollama enhancement timed out after ${Math.round(input.mode.enhancementTimeoutMs / 1000)}s`)
