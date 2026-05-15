@@ -20,6 +20,64 @@ const overlayShortcut = 'Fn / Ctrl+1 / Ctrl+2'
 let lastHistoryEntryId: number | null = null
 let lastHistoryText = ''
 
+function normalizeSpeechMemoryText(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\u4e00-\u9fff]+/gu, '')
+}
+
+function resolveSpeechMemorySource(entry: DictionaryEntryLike) {
+  return (entry.spokenPhrase || entry.word || '').trim()
+}
+
+function resolveSpeechMemoryOutput(entry: DictionaryEntryLike) {
+  return (entry.outputText || entry.replacement || resolveSpeechMemorySource(entry)).trim()
+}
+
+function isSpeechMemoryEntryActive(entry: DictionaryEntryLike) {
+  if (entry.isEnabled === false) return false
+  const hasTrainingCount = typeof entry.trainingCount === 'number'
+  if (hasTrainingCount) {
+    return Number(entry.trainingCount) >= 4
+  }
+  return entry.source !== 'cunzhi'
+}
+
+function applyDeterministicSpeechMemory(rawText: string, entries: DictionaryEntryLike[]) {
+  const trimmed = rawText.trim()
+  const normalizedText = normalizeSpeechMemoryText(trimmed)
+  if (!normalizedText) return null
+
+  const candidates = entries
+    .map((entry) => {
+      const source = resolveSpeechMemorySource(entry)
+      const output = resolveSpeechMemoryOutput(entry)
+      const normalizedSource = normalizeSpeechMemoryText(source)
+      return { entry, source, output, normalizedSource }
+    })
+    .filter(({ entry, output, normalizedSource }) => {
+      if (!normalizedSource || !output) return false
+      if (!isSpeechMemoryEntryActive(entry)) return false
+      return normalizeSpeechMemoryText(output) !== normalizedSource
+    })
+    .sort((a, b) => {
+      if (a.normalizedSource.length !== b.normalizedSource.length) {
+        return b.normalizedSource.length - a.normalizedSource.length
+      }
+      return (b.entry.trainingCount || 0) - (a.entry.trainingCount || 0)
+    })
+
+  const exactMatch = candidates.find(({ normalizedSource }) => normalizedSource === normalizedText)
+  if (!exactMatch) return null
+
+  return {
+    text: exactMatch.output,
+    source: exactMatch.source,
+    trainingCount: exactMatch.entry.trainingCount || 0,
+  }
+}
+
 export function useSpeechOverlay() {
   const iosStyleDraft = useIosStyleSpeechDraft(IOS_STYLE_DRAFT_EXPERIMENT)
   const sessionPhase = ref<SessionPhase>('idle')
@@ -106,15 +164,26 @@ export function useSpeechOverlay() {
       return { text: '', enhanced: false }
     }
 
+    const startedAt = performance.now()
+    const dictionaryEntries = await loadDictionaryEntriesBestEffort()
+    const deterministicMatch = applyDeterministicSpeechMemory(trimmed, dictionaryEntries)
+    if (deterministicMatch) {
+      const elapsedMs = Math.round(performance.now() - startedAt)
+      statusMessage.value = `已命中肌肉记忆「${deterministicMatch.source}」。`
+      pushDiagnostic(`肌肉记忆命中：${deterministicMatch.source} → ${deterministicMatch.text}`)
+      await debugLog(
+        `speech memory deterministic match source=${deterministicMatch.source} output=${deterministicMatch.text} training_count=${deterministicMatch.trainingCount} elapsed_ms=${elapsedMs}`,
+      )
+      return { text: deterministicMatch.text, enhanced: true, deterministic: true }
+    }
+
     statusMessage.value = `正在用 ${mode.ollamaModel} 处理「${mode.name}」。`
     pushDiagnostic(`开始 ${mode.name}：${trimmed.slice(0, 40)}`)
-    const startedAt = performance.now()
     await debugLog(
       `enhance start mode=${mode.id} model=${mode.ollamaModel} endpoint=/api/chat think=false len=${trimmed.length}`,
     )
 
     try {
-      const dictionaryEntries = await loadDictionaryEntriesBestEffort()
       const enhancedText = await enhanceTranscript({
         text: trimmed,
         mode,
@@ -129,7 +198,7 @@ export function useSpeechOverlay() {
       statusMessage.value = message
       pushDiagnostic(message)
       await debugLog(`enhance failed mode=${mode.id} model=${mode.ollamaModel} elapsed_ms=${elapsedMs} error=${String(error)}`)
-      return { text: trimmed, enhanced: false }
+      return { text: trimmed, enhanced: false, deterministic: false }
     }
   }
 
@@ -165,14 +234,18 @@ export function useSpeechOverlay() {
       sessionPhase.value = 'ready'
 
       if (commitOnEnd) {
-        statusMessage.value = result.enhanced
+        statusMessage.value = result.deterministic
+          ? '肌肉记忆命中，正在写回当前输入区。'
+          : result.enhanced
           ? `「${mode.name}」完成，正在写回当前输入区。`
           : '已回退使用原始转写，正在写回当前输入区。'
         await commitTextToTarget(finalText, appendedId)
         return
       }
 
-      statusMessage.value = result.enhanced
+      statusMessage.value = result.deterministic
+        ? '肌肉记忆命中，文本已保留在浮层里。'
+        : result.enhanced
         ? `「${mode.name}」完成，文本已保留在浮层里。`
         : 'Ollama 增强失败，原始转写已保留在浮层里。'
     } finally {
