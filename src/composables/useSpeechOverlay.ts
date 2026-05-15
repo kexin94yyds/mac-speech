@@ -297,11 +297,16 @@ export function useSpeechOverlay() {
       return
     }
 
+    const runId = ++finalizeRunId
     processingFinalText.value = true
 
     try {
       const mode = activeMode.value
       const result = await enhanceWithActiveMode(trimmedRaw)
+      if (runId !== finalizeRunId || runId <= cancelledFinalizeRunId) {
+        await debugLog(`finalize discarded run_id=${runId} latest_run_id=${finalizeRunId} cancelled_until=${cancelledFinalizeRunId}`)
+        return
+      }
       const finalText = result.text.trim()
 
       transcript.value = finalText
@@ -332,7 +337,9 @@ export function useSpeechOverlay() {
         ? `「${mode.name}」完成，文本已保留在浮层里。`
         : 'Ollama 增强失败，原始转写已保留在浮层里。'
     } finally {
-      processingFinalText.value = false
+      if (runId === finalizeRunId) {
+        processingFinalText.value = false
+      }
     }
   }
 
