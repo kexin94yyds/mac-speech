@@ -7,6 +7,7 @@ const showInMenuBar = ref(true)
 const showInDock = ref(true)
 const hotkey = ref('Fn / Ctrl+1 / Ctrl+2')
 const menuBarAction = ref('toggle')
+const shortFastPathEnabled = ref(true)
 const loaded = ref(false)
 
 async function loadSettings() {
@@ -17,12 +18,14 @@ async function loadSettings() {
       show_in_dock: boolean
       hotkey: string
       menu_bar_action: string
+      short_fast_path_enabled?: boolean
     }>('load_general_settings')
     launchAtLogin.value = s.launch_at_login
     showInMenuBar.value = s.show_in_menu_bar
     showInDock.value = s.show_in_dock
     hotkey.value = s.hotkey
     menuBarAction.value = s.menu_bar_action
+    shortFastPathEnabled.value = s.short_fast_path_enabled !== false
   } catch (e) {
     console.error('load_general_settings failed', e)
   } finally {
@@ -40,6 +43,7 @@ async function persist() {
         show_in_dock: showInDock.value,
         hotkey: hotkey.value,
         menu_bar_action: menuBarAction.value,
+        short_fast_path_enabled: shortFastPathEnabled.value,
       },
     })
   } catch (e) {
@@ -49,7 +53,7 @@ async function persist() {
 
 onMounted(() => { void loadSettings() })
 
-watch([launchAtLogin, showInMenuBar, showInDock, hotkey, menuBarAction], () => {
+watch([launchAtLogin, showInMenuBar, showInDock, hotkey, menuBarAction, shortFastPathEnabled], () => {
   void persist()
 })
 </script>
@@ -115,6 +119,20 @@ watch([launchAtLogin, showInMenuBar, showInDock, hotkey, menuBarAction], () => {
           <option value="open">打开主窗口</option>
           <option value="menu">显示菜单</option>
         </select>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3 class="card-title">语音速度</h3>
+      <div class="setting-row">
+        <div>
+          <p class="setting-label">短句快通道</p>
+          <p class="setting-desc">短命令和短消息直接写回，跳过 qwen3:14b；长文本仍使用智能整理。</p>
+        </div>
+        <label class="toggle">
+          <input v-model="shortFastPathEnabled" type="checkbox">
+          <span class="toggle-track" />
+        </label>
       </div>
     </section>
 
