@@ -859,6 +859,39 @@ struct DictEntry {
     replacement: String,
 }
 
+fn default_dictionary_entries() -> Vec<DictEntry> {
+    const WORDS: &[&str] = &[
+        "VoiceInk",
+        "Ollama",
+        "Cursor",
+        "Claude",
+        "Anthropic",
+        "Whisper",
+        "qwen3",
+        "Typeless",
+        "Wispr Flow",
+        "SenseVoice",
+        "Hammerspoon",
+        "SwiftUI",
+        "Xcode",
+        "GitHub",
+        "TypeScript",
+        "Python",
+        "Bitget",
+        "OKX",
+    ];
+
+    WORDS
+        .iter()
+        .enumerate()
+        .map(|(index, word)| DictEntry {
+            id: (index + 1) as u64,
+            word: (*word).into(),
+            replacement: (*word).into(),
+        })
+        .collect()
+}
+
 fn dictionary_file_path() -> PathBuf {
     let base = dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -878,7 +911,15 @@ fn save_dictionary(entries: Vec<DictEntry>) -> Result<(), String> {
 fn load_dictionary() -> Result<Vec<DictEntry>, String> {
     let path = dictionary_file_path();
     if !path.exists() {
-        return Ok(vec![]);
+        let entries = default_dictionary_entries();
+        let json = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
+        if let Err(error) = std::fs::write(&path, json) {
+            eprintln!(
+                "[iterate-speech] failed to write default dictionary seed path={} error={error}",
+                path.display()
+            );
+        }
+        return Ok(entries);
     }
     let data = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     Ok(serde_json::from_str(&data).unwrap_or_default())

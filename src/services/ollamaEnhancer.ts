@@ -63,6 +63,14 @@ function stripModelNoise(text: string) {
   return cleaned
 }
 
+function resolveNumPredict(text: string) {
+  const length = text.trim().length
+  if (length < 160) return 384
+  if (length < 700) return 1024
+  if (length < 1600) return 2048
+  return 3072
+}
+
 export async function enhanceTranscript(input: EnhanceTranscriptInput) {
   const trimmed = input.text.trim()
   if (!trimmed) {
@@ -88,9 +96,10 @@ export async function enhanceTranscript(input: EnhanceTranscriptInput) {
         ],
         stream: false,
         think: false,
+        keep_alive: '10m',
         options: {
           temperature: 0.15,
-          num_predict: input.mode.id === 'structure' ? 2048 : 384,
+          num_predict: resolveNumPredict(trimmed),
         },
       }),
       signal: controller.signal,

@@ -30,9 +30,10 @@ export function useSpeechOverlay() {
   const manualDraft = ref('')
   const activeModeId = ref<SpeechModeId>(DEFAULT_SPEECH_MODE_ID)
   const statusMessage = ref('等待 Fn / Ctrl+1 / Ctrl+2 唤起录音。')
+  const processingFinalText = ref(false)
   const diagnostics = ref<string[]>([
     IOS_STYLE_DRAFT_EXPERIMENT
-      ? '当前策略：lab 实验版启用 iOS 风格草稿分段骨架；识别仍是原生 Speech.framework，外部实时回改尚未接通。'
+      ? '当前策略：启用 iOS 风格草稿分段缓存；识别后交给本地 Ollama 智能整理。'
       : '当前策略：Fn/Ctrl+1 使用中文润色，Ctrl+2 使用结构化整理；识别后交给本地 Ollama 增强。'
   ])
   const micLevel = ref(0)
@@ -139,29 +140,41 @@ export function useSpeechOverlay() {
       return
     }
 
-    const mode = activeMode.value
-    const result = await enhanceWithActiveMode(trimmedRaw)
-    const finalText = result.text.trim()
-
-    transcript.value = finalText
-    partialTranscript.value = ''
-    iosStyleDraft.reset()
-
-    const appendedId = await appendHistoryBestEffort(finalText, false)
-    shouldCommitOnEnd = false
-    sessionPhase.value = 'ready'
-
-    if (commitOnEnd) {
-      statusMessage.value = result.enhanced
-        ? `「${mode.name}」完成，正在写回当前输入区。`
-        : '已回退使用原始转写，正在写回当前输入区。'
-      await commitTextToTarget(finalText, appendedId)
+    if (processingFinalText.value) {
+      await debugLog(`finalize skipped because previous enhancement is still running len=${trimmedRaw.length}`)
+      pushDiagnostic('上一段语音仍在处理中，已忽略重复收口。')
       return
     }
 
-    statusMessage.value = result.enhanced
-      ? `「${mode.name}」完成，文本已保留在浮层里。`
-      : 'Ollama 增强失败，原始转写已保留在浮层里。'
+    processingFinalText.value = true
+
+    try {
+      const mode = activeMode.value
+      const result = await enhanceWithActiveMode(trimmedRaw)
+      const finalText = result.text.trim()
+
+      transcript.value = finalText
+      partialTranscript.value = ''
+      iosStyleDraft.reset()
+
+      const appendedId = await appendHistoryBestEffort(finalText, false)
+      shouldCommitOnEnd = false
+      sessionPhase.value = 'ready'
+
+      if (commitOnEnd) {
+        statusMessage.value = result.enhanced
+          ? `「${mode.name}」完成，正在写回当前输入区。`
+          : '已回退使用原始转写，正在写回当前输入区。'
+        await commitTextToTarget(finalText, appendedId)
+        return
+      }
+
+      statusMessage.value = result.enhanced
+        ? `「${mode.name}」完成，文本已保留在浮层里。`
+        : 'Ollama 增强失败，原始转写已保留在浮层里。'
+    } finally {
+      processingFinalText.value = false
+    }
   }
 
   const phaseLabel = computed(() => {
@@ -214,6 +227,7 @@ export function useSpeechOverlay() {
 
   const canStartListening = computed(
     () =>
+      !processingFinalText.value &&
       sessionPhase.value !== 'starting' &&
       sessionPhase.value !== 'listening' &&
       sessionPhase.value !== 'stopping'
@@ -446,6 +460,12 @@ export function useSpeechOverlay() {
     source: 'shortcut' | 'button',
     opts?: { skipTargetCapture?: boolean; modeId?: string | null; shortcut?: string },
   ) {
+    if (processingFinalText.value) {
+      statusMessage.value = '上一段语音仍在智能整理中，请稍等。'
+      pushDiagnostic('processing lock blocked startListening')
+      return
+    }
+
     const nextMode = resolveSpeechMode(opts?.modeId || activeModeId.value)
     const shortcutLabel = opts?.shortcut || nextMode.shortcut
     activeModeId.value = nextMode.id
@@ -624,6 +644,12 @@ export function useSpeechOverlay() {
     modeId?: string | null
     shortcut?: string
   } = {}) {
+    if (processingFinalText.value) {
+      statusMessage.value = '上一段语音仍在智能整理中，请稍等。'
+      pushDiagnostic('processing lock blocked shortcut toggle')
+      return
+    }
+
     if (sessionPhase.value === 'listening') {
       const hasText = iosStyleDraft.resolveTranscript(partialTranscript.value, transcript.value).trim()
       // hasText=false 时仍须等 native-final（仅 final、无 partial 时这里也为空，不能用「秒取消」抢在 final 前把 phase 置 idle，否则不写历史）
