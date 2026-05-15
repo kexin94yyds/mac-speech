@@ -164,6 +164,8 @@ export function useSpeechOverlay() {
   let startFallbackTimer: number | null = null
   // 仅在用户明确取消（而非 stop fallback 超时）时，忽略迟到的 native-final。
   let ignoreLateNativeFinal = false
+  let finalizeRunId = 0
+  let cancelledFinalizeRunId = 0
 
   async function debugLog(message: string) {
     try {
@@ -611,6 +613,28 @@ export function useSpeechOverlay() {
   async function hideOverlay() {
     const currentWindow = getCurrentWindow()
     await currentWindow.hide()
+  }
+
+  async function cancelActiveFinalization(reason: string) {
+    const runId = finalizeRunId
+    if (runId > 0) {
+      cancelledFinalizeRunId = Math.max(cancelledFinalizeRunId, runId)
+    }
+    processingFinalText.value = false
+    shouldCommitOnEnd = false
+    ignoreLateNativeFinal = true
+    clearStopFallbackTimer()
+    clearStartFallbackTimer()
+    sessionPhase.value = 'idle'
+    statusMessage.value = '已取消本次语音处理。'
+    pushDiagnostic('已取消本次语音处理。')
+    await debugLog(`finalize cancel requested reason=${reason} run_id=${runId}`)
+    try {
+      await invoke('stop_native_speech')
+    } catch {
+      // Best-effort: the finalization result is already marked as cancelled.
+    }
+    await hideOverlay()
   }
 
   async function startListening(
