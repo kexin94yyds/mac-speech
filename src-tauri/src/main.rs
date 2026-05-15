@@ -144,12 +144,7 @@ extern "C" fn native_speech_callback(
         _ => return,
     };
 
-    let _ = app.emit(
-        event_name,
-        SpeechBridgePayload {
-            text,
-        },
-    );
+    let _ = app.emit(event_name, SpeechBridgePayload { text });
 }
 
 #[cfg(target_os = "macos")]
@@ -160,15 +155,15 @@ mod macos {
     };
     use core_foundation::runloop::CFRunLoop;
     use core_graphics::event::{
-        CallbackResult, CGEvent, CGEventFlags, CGEventTap, CGEventTapLocation,
-        CGEventTapOptions, CGEventTapPlacement, CGEventType, CGKeyCode, EventField,
+        CGEvent, CGEventFlags, CGEventTap, CGEventTapLocation, CGEventTapOptions,
+        CGEventTapPlacement, CGEventType, CGKeyCode, CallbackResult, EventField,
     };
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+    use std::process::Command;
     use std::sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
     };
-    use std::process::Command;
     use std::thread;
     use std::time::Duration;
     use tauri::{AppHandle, Emitter, Manager};
@@ -279,7 +274,9 @@ mod macos {
             .map_err(|error| format!("failed to query frontmost macOS app: {error}"))?;
 
         if !output.status.success() {
-            return Err("osascript returned a non-zero exit code while reading frontmost app".to_string());
+            return Err(
+                "osascript returned a non-zero exit code while reading frontmost app".to_string(),
+            );
         }
 
         let bundle_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -300,7 +297,9 @@ mod macos {
         if status.success() {
             Ok(())
         } else {
-            Err(format!("activating macOS app {bundle_id} returned a non-zero exit code"))
+            Err(format!(
+                "activating macOS app {bundle_id} returned a non-zero exit code"
+            ))
         }
     }
 
@@ -316,8 +315,8 @@ mod macos {
                 CGEventTapOptions::ListenOnly,
                 vec![CGEventType::FlagsChanged, CGEventType::KeyDown],
                 move |_proxy, event_type, event| {
-                    let keycode =
-                        event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE) as CGKeyCode;
+                    let keycode = event.get_integer_value_field(EventField::KEYBOARD_EVENT_KEYCODE)
+                        as CGKeyCode;
 
                     if matches!(event_type, CGEventType::KeyDown) {
                         let flags = event.get_flags();
@@ -659,22 +658,22 @@ fn reveal_overlay_anchor(window: &tauri::WebviewWindow) {
         macos_bump_overlay_window_level(&window_for_main_thread);
         let _ = window_for_main_thread.set_visible_on_all_workspaces(true);
         let _ = window_for_main_thread.set_skip_taskbar(true);
-        let _ = window_for_main_thread.set_size(Size::Logical(LogicalSize::new(
-            ANCHOR_WIDTH,
-            ANCHOR_HEIGHT,
-        )));
+        let _ = window_for_main_thread
+            .set_size(Size::Logical(LogicalSize::new(ANCHOR_WIDTH, ANCHOR_HEIGHT)));
 
         if let Some(saved) = read_saved_overlay_position() {
             let _ = window_for_main_thread.set_position(Position::Physical(saved));
         } else if let Ok(Some(monitor)) = window_for_main_thread.current_monitor() {
             let monitor_size = monitor.size();
             let scale_factor = monitor.scale_factor();
-            let x = ((monitor_size.width as f64 - ANCHOR_WIDTH * scale_factor) / 2.0).round() as i32;
-            let y =
-                (monitor_size.height as f64 - ANCHOR_HEIGHT * scale_factor - ANCHOR_BOTTOM_MARGIN * scale_factor)
-                    .round() as i32;
-            let _ =
-                window_for_main_thread.set_position(Position::Physical(PhysicalPosition::new(x, y)));
+            let x =
+                ((monitor_size.width as f64 - ANCHOR_WIDTH * scale_factor) / 2.0).round() as i32;
+            let y = (monitor_size.height as f64
+                - ANCHOR_HEIGHT * scale_factor
+                - ANCHOR_BOTTOM_MARGIN * scale_factor)
+                .round() as i32;
+            let _ = window_for_main_thread
+                .set_position(Position::Physical(PhysicalPosition::new(x, y)));
         }
 
         eprintln!("[iterate-speech] revealing bottom anchor");
@@ -710,7 +709,13 @@ fn ensure_overlay_window(app: &tauri::AppHandle) -> tauri::Result<()> {
         return Ok(());
     }
 
-    let Some(config) = app.config().app.windows.iter().find(|window| window.label == "overlay") else {
+    let Some(config) = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|window| window.label == "overlay")
+    else {
         return Ok(());
     };
 
@@ -791,13 +796,16 @@ fn append_history(text: String, target_app: String, written_back: bool) -> Resul
 
     let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
-    entries.insert(0, HistoryEntry {
-        id,
-        text,
-        target_app,
-        time: now,
-        written_back,
-    });
+    entries.insert(
+        0,
+        HistoryEntry {
+            id,
+            text,
+            target_app,
+            time: now,
+            written_back,
+        },
+    );
 
     if entries.len() > 100 {
         entries.truncate(100);
@@ -805,7 +813,11 @@ fn append_history(text: String, target_app: String, written_back: bool) -> Resul
 
     let json = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| {
-        history_debug_line(&format!("append_history write_failed path={} error={}", path.display(), e));
+        history_debug_line(&format!(
+            "append_history write_failed path={} error={}",
+            path.display(),
+            e
+        ));
         e.to_string()
     })?;
     history_debug_line(&format!(
@@ -820,7 +832,11 @@ fn append_history(text: String, target_app: String, written_back: bool) -> Resul
 #[tauri::command]
 fn mark_history_written_back(id: u64) -> Result<(), String> {
     let path = history_file_path();
-    history_debug_line(&format!("mark_history_written_back start id={} path={}", id, path.display()));
+    history_debug_line(&format!(
+        "mark_history_written_back start id={} path={}",
+        id,
+        path.display()
+    ));
     if !path.exists() {
         history_debug_line("mark_history_written_back history_file_missing");
         return Err("history file missing".to_string());
@@ -833,7 +849,11 @@ fn mark_history_written_back(id: u64) -> Result<(), String> {
     entry.written_back = true;
     let json = serde_json::to_string_pretty(&entries).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| e.to_string())?;
-    history_debug_line(&format!("mark_history_written_back ok id={} path={}", id, path.display()));
+    history_debug_line(&format!(
+        "mark_history_written_back ok id={} path={}",
+        id,
+        path.display()
+    ));
     Ok(())
 }
 
@@ -841,12 +861,19 @@ fn mark_history_written_back(id: u64) -> Result<(), String> {
 fn load_history() -> Result<Vec<HistoryEntry>, String> {
     let path = history_file_path();
     if !path.exists() {
-        history_debug_line(&format!("load_history path_missing path={}", path.display()));
+        history_debug_line(&format!(
+            "load_history path_missing path={}",
+            path.display()
+        ));
         return Ok(vec![]);
     }
     let data = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let entries: Vec<HistoryEntry> = serde_json::from_str(&data).unwrap_or_default();
-    history_debug_line(&format!("load_history ok total={} path={}", entries.len(), path.display()));
+    history_debug_line(&format!(
+        "load_history ok total={} path={}",
+        entries.len(),
+        path.display()
+    ));
     Ok(entries)
 }
 
@@ -859,17 +886,33 @@ struct DictEntry {
     word: String,
     #[serde(default)]
     replacement: String,
-    #[serde(rename = "spokenPhrase", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "spokenPhrase",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     spoken_phrase: Option<String>,
-    #[serde(rename = "outputText", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "outputText",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     output_text: Option<String>,
-    #[serde(rename = "trainingCount", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "trainingCount",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     training_count: Option<u64>,
     #[serde(rename = "isEnabled", default, skip_serializing_if = "Option::is_none")]
     is_enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     source: Option<String>,
-    #[serde(rename = "externalId", default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "externalId",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     external_id: Option<String>,
     #[serde(rename = "readOnly", default, skip_serializing_if = "is_false")]
     read_only: bool,
