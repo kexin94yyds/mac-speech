@@ -1075,10 +1075,6 @@ struct CunzhiSpeechMemoryEntry {
     is_enabled: bool,
 }
 
-fn default_true() -> bool {
-    true
-}
-
 fn load_cunzhi_speech_memory_entries() -> Vec<DictEntry> {
     let Some(path) = cunzhi_speech_memory_file_path() else {
         eprintln!("[iterate-speech] shared speech memory path unavailable: HOME is not set");
