@@ -4,11 +4,17 @@ import { emit, listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { transcribeAudioBlob } from '../engines/localWhisperTranscriber'
 import { IOS_STYLE_DRAFT_EXPERIMENT, IS_LAB_VARIANT } from '../config/appVariant'
+import {
+  DEFAULT_SPEECH_MODE_ID,
+  resolveSpeechMode,
+  type SpeechModeId,
+} from '../config/speechModes'
+import { enhanceTranscript, type DictionaryEntryLike } from '../services/ollamaEnhancer'
 import { useIosStyleSpeechDraft } from './useIosStyleSpeechDraft'
 
 type SessionPhase = 'idle' | 'starting' | 'listening' | 'stopping' | 'ready' | 'unsupported' | 'error'
 
-const overlayShortcut = 'Fn'
+const overlayShortcut = 'Fn / Ctrl+1 / Ctrl+2'
 
 /** 最近一次 native-final 写入历史的 id；写回成功后清空。 */
 let lastHistoryEntryId: number | null = null
@@ -22,11 +28,12 @@ export function useSpeechOverlay() {
   const partialTranscript = ref('')
   const lastCommittedText = ref('')
   const manualDraft = ref('')
-  const statusMessage = ref('等待 Fn 唤起录音。')
+  const activeModeId = ref<SpeechModeId>(DEFAULT_SPEECH_MODE_ID)
+  const statusMessage = ref('等待 Fn / Ctrl+1 / Ctrl+2 唤起录音。')
   const diagnostics = ref<string[]>([
     IOS_STYLE_DRAFT_EXPERIMENT
       ? '当前策略：lab 实验版启用 iOS 风格草稿分段骨架；识别仍是原生 Speech.framework，外部实时回改尚未接通。'
-      : '当前策略：按 Fn 开始语音输入；优先实时识别，异常时再回退到本地 Whisper。'
+      : '当前策略：Fn/Ctrl+1 使用中文润色，Ctrl+2 使用结构化整理；识别后交给本地 Ollama 增强。'
   ])
   const micLevel = ref(0)
 
@@ -98,6 +105,8 @@ export function useSpeechOverlay() {
     }
   })
 
+  const activeMode = computed(() => resolveSpeechMode(activeModeId.value))
+
   const displayTranscript = computed(() => {
     const experimentalDraft = iosStyleDraft.draftTranscript.value
     if (IOS_STYLE_DRAFT_EXPERIMENT && experimentalDraft) {
@@ -122,7 +131,7 @@ export function useSpeechOverlay() {
     if (sessionPhase.value === 'stopping') {
       return '正在收束识别…'
     }
-    return '按 Fn 开始，或先手动输入一段文本测试写回。'
+    return '按 Fn / Ctrl+1 开始中文润色，或按 Ctrl+2 开始结构化整理。'
   })
 
   const canStartListening = computed(
