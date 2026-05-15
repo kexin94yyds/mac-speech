@@ -39,7 +39,7 @@ async function refreshStatuses() {
     inputMonitoringGranted.value = input
 
     if (mic && speech && acc && input) {
-      statusSummary.value = '系统已就绪，按 Fn 开始语音输入。'
+      statusSummary.value = '系统已就绪，按 Fn / Ctrl+1 开始中文润色，按 Ctrl+2 开始结构化整理。'
     }
     else {
       const missing = [
@@ -180,8 +180,22 @@ onUnmounted(() => {
       <div class="trigger-card">
         <div class="trigger-key">Fn</div>
         <div>
-          <p class="trigger-label">当前热键</p>
-          <p class="trigger-desc">按一次开始监听，再按一次停止并写回文本到当前输入框。</p>
+          <p class="trigger-label">默认热键</p>
+          <p class="trigger-desc">Fn 等价于中文润色。按一次开始监听，再按一次停止、润色并写回。</p>
+        </div>
+      </div>
+      <div class="trigger-card">
+        <div class="trigger-key">⌃1</div>
+        <div>
+          <p class="trigger-label">中文润色</p>
+          <p class="trigger-desc">短消息输入，停止后用本地 Ollama 清理口头禅、补标点。</p>
+        </div>
+      </div>
+      <div class="trigger-card">
+        <div class="trigger-key">⌃2</div>
+        <div>
+          <p class="trigger-label">结构化整理</p>
+          <p class="trigger-desc">长篇口述，停止后整理为自然段落式文本。</p>
         </div>
       </div>
     </section>
@@ -200,7 +214,7 @@ onUnmounted(() => {
         </div>
         <div class="arch-card">
           <p class="arch-title">底部波浪 Overlay</p>
-          <p class="arch-desc">Fn 瞬时出现，仅反馈正在说话，结束后自动消失。</p>
+          <p class="arch-desc">快捷键触发后出现，反馈录音和 Ollama 处理状态，结束后自动消失。</p>
         </div>
       </div>
     </section>
