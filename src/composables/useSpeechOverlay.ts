@@ -439,9 +439,10 @@ export function useSpeechOverlay() {
 
   async function startListening(
     source: 'shortcut' | 'button',
-    opts?: { skipTargetCapture?: boolean; modeId?: string | null },
+    opts?: { skipTargetCapture?: boolean; modeId?: string | null; shortcut?: string },
   ) {
     const nextMode = resolveSpeechMode(opts?.modeId || activeModeId.value)
+    const shortcutLabel = opts?.shortcut || nextMode.shortcut
     activeModeId.value = nextMode.id
     await debugLog(
       `startListening source=${source} mode=${nextMode.id} phase=${sessionPhase.value} skipTargetCapture=${Boolean(opts?.skipTargetCapture)}`,
@@ -468,7 +469,7 @@ export function useSpeechOverlay() {
       sessionPhase.value = 'starting'
       statusMessage.value =
         source === 'shortcut'
-          ? `${nextMode.shortcut} 已触发「${nextMode.name}」，正在连接原生语音识别。`
+          ? `${shortcutLabel} 已触发「${nextMode.name}」，正在连接原生语音识别。`
           : `正在连接原生语音识别，当前模式为「${nextMode.name}」。`
       startFallbackTimer = window.setTimeout(async () => {
         if (sessionPhase.value !== 'starting' || partialTranscript.value || transcript.value) {
@@ -499,9 +500,9 @@ export function useSpeechOverlay() {
     if (commitOnEnd && immediateCommitText) {
       shouldCommitOnEnd = false
       sessionPhase.value = 'ready'
-      statusMessage.value = '已用当前识别结果直接收口，不再等待 final。'
+      statusMessage.value = '已用当前识别结果直接收口，正在进入双模处理。'
       void invoke('stop_native_speech')
-      void commitTextToTarget(immediateCommitText)
+      void finalizeRecognizedText(immediateCommitText, true)
       return
     }
 
@@ -528,7 +529,7 @@ export function useSpeechOverlay() {
       const commitText = iosStyleDraft.resolveTranscript(partialTranscript.value, transcript.value).trim()
       if (commitOnEnd && commitText) {
         shouldCommitOnEnd = false
-        await commitTextToTarget(commitText)
+        await finalizeRecognizedText(commitText, true)
         return
       }
 
@@ -550,11 +551,7 @@ export function useSpeechOverlay() {
       }
 
       shouldCommitOnEnd = false
-      if (!lastHistoryEntryId) {
-        await appendHistoryBestEffort(commitText, false)
-      }
-      sessionPhase.value = 'ready'
-      statusMessage.value = '停止信号已发出，已用当前识别结果完成回写流程。'
+      await finalizeRecognizedText(commitText, false)
     }, firstPassMs)
   }
 
