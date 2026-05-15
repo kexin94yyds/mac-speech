@@ -9,12 +9,16 @@ import {
   resolveSpeechMode,
   type SpeechModeId,
 } from '../config/speechModes'
-import { enhanceTranscript, type DictionaryEntryLike } from '../services/ollamaEnhancer'
+import { enhanceTranscript, type DictionaryEntryLike, type OllamaDurationMetrics } from '../services/ollamaEnhancer'
 import { useIosStyleSpeechDraft } from './useIosStyleSpeechDraft'
 
 type SessionPhase = 'idle' | 'starting' | 'listening' | 'stopping' | 'ready' | 'unsupported' | 'error'
 
 const overlayShortcut = 'Fn / Ctrl+1 / Ctrl+2'
+const MAX_CONTEXTUAL_STRINGS = 100
+const MAX_CONTEXTUAL_STRING_LENGTH = 32
+const SHORT_FAST_PATH_MAX_RAW_LENGTH = 28
+const SHORT_FAST_PATH_MAX_NORMALIZED_LENGTH = 18
 
 /** 最近一次 native-final 写入历史的 id；写回成功后清空。 */
 let lastHistoryEntryId: number | null = null
@@ -42,6 +46,26 @@ function isSpeechMemoryEntryActive(entry: DictionaryEntryLike) {
     return Number(entry.trainingCount) >= 4
   }
   return entry.source !== 'cunzhi'
+}
+
+function buildSpeechContextualStrings(entries: DictionaryEntryLike[]) {
+  const phrases = new Map<string, string>()
+  const addPhrase = (value?: string) => {
+    const trimmed = (value || '').trim()
+    if (!trimmed || trimmed.length > MAX_CONTEXTUAL_STRING_LENGTH || trimmed.includes('\n')) return
+    const key = normalizeSpeechMemoryText(trimmed)
+    if (!key || phrases.has(key)) return
+    phrases.set(key, trimmed)
+  }
+
+  for (const entry of entries) {
+    if (entry.isEnabled === false) continue
+    addPhrase(resolveSpeechMemorySource(entry))
+    addPhrase(resolveSpeechMemoryOutput(entry))
+    if (phrases.size >= MAX_CONTEXTUAL_STRINGS) break
+  }
+
+  return Array.from(phrases.values()).slice(0, MAX_CONTEXTUAL_STRINGS)
 }
 
 function applyDeterministicSpeechMemory(rawText: string, entries: DictionaryEntryLike[]) {
@@ -76,6 +100,32 @@ function applyDeterministicSpeechMemory(rawText: string, entries: DictionaryEntr
     source: exactMatch.source,
     trainingCount: exactMatch.entry.trainingCount || 0,
   }
+}
+
+function applyShortFastPath(rawText: string, enabled: boolean) {
+  if (!enabled) return null
+  const trimmed = rawText.trim()
+  if (!trimmed || trimmed.includes('\n') || trimmed.length > SHORT_FAST_PATH_MAX_RAW_LENGTH) return null
+
+  const normalizedText = normalizeSpeechMemoryText(trimmed)
+  if (!normalizedText || normalizedText.length > SHORT_FAST_PATH_MAX_NORMALIZED_LENGTH) return null
+
+  return {
+    text: trimmed,
+    normalizedLength: normalizedText.length,
+  }
+}
+
+function formatOllamaMetrics(metrics?: OllamaDurationMetrics) {
+  if (!metrics) return 'ollama_metrics=missing'
+  return [
+    `ollama_total_ms=${metrics.totalDurationMs ?? 'unknown'}`,
+    `ollama_load_ms=${metrics.loadDurationMs ?? 'unknown'}`,
+    `ollama_prompt_eval_count=${metrics.promptEvalCount ?? 'unknown'}`,
+    `ollama_prompt_eval_ms=${metrics.promptEvalDurationMs ?? 'unknown'}`,
+    `ollama_eval_count=${metrics.evalCount ?? 'unknown'}`,
+    `ollama_eval_ms=${metrics.evalDurationMs ?? 'unknown'}`,
+  ].join(' ')
 }
 
 export function useSpeechOverlay() {
@@ -157,6 +207,16 @@ export function useSpeechOverlay() {
     }
   }
 
+  async function loadShortFastPathEnabledBestEffort() {
+    try {
+      const settings = await invoke<{ short_fast_path_enabled?: boolean }>('load_general_settings')
+      return settings.short_fast_path_enabled !== false
+    } catch {
+      await debugLog('short fast path setting unavailable, default enabled')
+      return true
+    }
+  }
+
   async function enhanceWithActiveMode(rawText: string) {
     const mode = activeMode.value
     const trimmed = rawText.trim()
@@ -165,7 +225,10 @@ export function useSpeechOverlay() {
     }
 
     const startedAt = performance.now()
-    const dictionaryEntries = await loadDictionaryEntriesBestEffort()
+    const [dictionaryEntries, shortFastPathEnabled] = await Promise.all([
+      loadDictionaryEntriesBestEffort(),
+      loadShortFastPathEnabledBestEffort(),
+    ])
     const deterministicMatch = applyDeterministicSpeechMemory(trimmed, dictionaryEntries)
     if (deterministicMatch) {
       const elapsedMs = Math.round(performance.now() - startedAt)
@@ -177,6 +240,17 @@ export function useSpeechOverlay() {
       return { text: deterministicMatch.text, enhanced: true, deterministic: true }
     }
 
+    const shortFastPath = applyShortFastPath(trimmed, shortFastPathEnabled)
+    if (shortFastPath) {
+      const elapsedMs = Math.round(performance.now() - startedAt)
+      statusMessage.value = '短句快通道命中，已跳过 Ollama。'
+      pushDiagnostic(`短句快通道：${shortFastPath.text.slice(0, 40)}`)
+      await debugLog(
+        `short fast path match len=${trimmed.length} normalized_len=${shortFastPath.normalizedLength} elapsed_ms=${elapsedMs}`,
+      )
+      return { text: shortFastPath.text, enhanced: false, shortFastPath: true }
+    }
+
     statusMessage.value = `正在用 ${mode.ollamaModel} 处理「${mode.name}」。`
     pushDiagnostic(`开始 ${mode.name}：${trimmed.slice(0, 40)}`)
     await debugLog(
@@ -184,14 +258,17 @@ export function useSpeechOverlay() {
     )
 
     try {
-      const enhancedText = await enhanceTranscript({
+      const enhancedResult = await enhanceTranscript({
         text: trimmed,
         mode,
         dictionaryEntries,
       })
+      const enhancedText = enhancedResult.text.trim() || trimmed
       const elapsedMs = Math.round(performance.now() - startedAt)
-      await debugLog(`enhance ok mode=${mode.id} model=${mode.ollamaModel} elapsed_ms=${elapsedMs} len=${enhancedText.length}`)
-      return { text: enhancedText.trim() || trimmed, enhanced: true }
+      await debugLog(
+        `enhance ok mode=${mode.id} model=${mode.ollamaModel} elapsed_ms=${elapsedMs} ${formatOllamaMetrics(enhancedResult.metrics)} len=${enhancedText.length}`,
+      )
+      return { text: enhancedText, enhanced: true }
     } catch (error) {
       const elapsedMs = Math.round(performance.now() - startedAt)
       const message = `Ollama 增强失败，已回退原始转写：${String(error)}`
@@ -236,6 +313,8 @@ export function useSpeechOverlay() {
       if (commitOnEnd) {
         statusMessage.value = result.deterministic
           ? '肌肉记忆命中，正在写回当前输入区。'
+          : result.shortFastPath
+          ? '短句快通道命中，正在写回当前输入区。'
           : result.enhanced
           ? `「${mode.name}」完成，正在写回当前输入区。`
           : '已回退使用原始转写，正在写回当前输入区。'
@@ -245,6 +324,8 @@ export function useSpeechOverlay() {
 
       statusMessage.value = result.deterministic
         ? '肌肉记忆命中，文本已保留在浮层里。'
+        : result.shortFastPath
+        ? '短句快通道命中，文本已保留在浮层里。'
         : result.enhanced
         ? `「${mode.name}」完成，文本已保留在浮层里。`
         : 'Ollama 增强失败，原始转写已保留在浮层里。'
@@ -583,7 +664,12 @@ export function useSpeechOverlay() {
         pushDiagnostic('native started/partial 事件超时，已终止本次识别。')
         await invoke('stop_native_speech')
       }, 2500)
-      await invoke('start_native_speech')
+      const dictionaryEntries = await loadDictionaryEntriesBestEffort()
+      const contextualStrings = buildSpeechContextualStrings(dictionaryEntries)
+      await debugLog(
+        `native contextual strings prepared count=${contextualStrings.length} preview=${contextualStrings.slice(0, 8).join('|')}`,
+      )
+      await invoke('start_native_speech', { contextualStrings })
     } catch (error) {
       clearStartFallbackTimer()
       sessionPhase.value = 'error'
