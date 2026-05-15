@@ -6,7 +6,7 @@
     <section class="card">
       <h3 class="card-title">权限排查</h3>
       <div class="help-item">
-        <p class="help-q">按 Fn 没反应？</p>
+        <p class="help-q">按 Fn / Ctrl+1 / Ctrl+2 没反应？</p>
         <p class="help-a">确认「辅助功能」和「输入监控」都已在系统设置中开启。如果刚开启，可能需要重启应用。</p>
       </div>
       <div class="divider" />
@@ -30,7 +30,20 @@
       <h3 class="card-title">快捷键说明</h3>
       <div class="key-row">
         <div class="key-combo"><span class="key">Fn</span></div>
-        <p class="key-desc">开始 / 停止语音输入</p>
+        <p class="key-desc">开始 / 停止中文润色</p>
+      </div>
+      <div class="key-row">
+        <div class="key-combo"><span class="key">⌃1</span></div>
+        <p class="key-desc">中文润色：短消息清理、标点和中英空格</p>
+      </div>
+      <div class="key-row">
+        <div class="key-combo"><span class="key">⌃2</span></div>
+        <p class="key-desc">结构化整理：长篇口述整理成自然段落</p>
+      </div>
+      <div class="divider" />
+      <div class="help-item">
+        <p class="help-q">停止后一直在处理？</p>
+        <p class="help-a">双模增强依赖本机 Ollama 和 qwen3:14b。确认 Ollama 已启动，并且模型已下载；不可用时会回退原始转写。</p>
       </div>
     </section>
 
@@ -47,7 +60,7 @@
         </div>
         <div class="about-item">
           <p class="about-label">识别引擎</p>
-          <p class="about-value">Speech.framework + Whisper</p>
+          <p class="about-value">Speech.framework + Ollama</p>
         </div>
         <div class="about-item">
           <p class="about-label">反馈</p>
