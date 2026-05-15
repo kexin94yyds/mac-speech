@@ -12,7 +12,7 @@ const fallbackStrategy = ref('whisper')
 <template>
   <div class="page">
     <h2 class="page-title">语音设置</h2>
-    <p class="page-desc">配置语言、识别模式和写回策略。</p>
+    <p class="page-desc">配置语言、识别模式、双模增强和写回策略。</p>
 
     <section v-if="IS_LAB_VARIANT" class="card card-accent">
       <h3 class="card-title">实验线</h3>
@@ -50,7 +50,7 @@ const fallbackStrategy = ref('whisper')
       <div class="setting-row">
         <div>
           <p class="setting-label">识别模式</p>
-          <p class="setting-desc">原生使用 macOS Speech.framework，本地 Whisper 完全离线。</p>
+          <p class="setting-desc">原生使用 macOS Speech.framework；停止后进入本地 Ollama 双模增强。</p>
         </div>
         <select v-model="recognitionMode" class="select">
           <option value="native">原生 Speech.framework</option>
@@ -61,11 +61,30 @@ const fallbackStrategy = ref('whisper')
     </section>
 
     <section class="card">
+      <h3 class="card-title">双模增强</h3>
+      <div class="setting-row">
+        <div>
+          <p class="setting-label">Ctrl+1 / Fn：中文润色</p>
+          <p class="setting-desc">短句日常输入，删除口头禅、补标点、修正中英混排空格。</p>
+        </div>
+        <div class="key-badge">qwen3:14b</div>
+      </div>
+      <div class="divider" />
+      <div class="setting-row">
+        <div>
+          <p class="setting-label">Ctrl+2：结构化整理</p>
+          <p class="setting-desc">长篇口述整理成自然段落，保留信息点和原表达习惯。</p>
+        </div>
+        <div class="key-badge">Ollama</div>
+      </div>
+    </section>
+
+    <section class="card">
       <h3 class="card-title">写回行为</h3>
       <div class="setting-row">
         <div>
           <p class="setting-label">自动写回</p>
-          <p class="setting-desc">停止后自动将文本粘贴到当前聚焦的输入框。</p>
+          <p class="setting-desc">停止后先完成双模增强，再自动粘贴到当前聚焦输入框。</p>
         </div>
         <label class="toggle">
           <input v-model="autoWriteBack" type="checkbox">
@@ -97,7 +116,7 @@ const fallbackStrategy = ref('whisper')
       </div>
     </section>
 
-    <p class="footnote">语言和识别模式的切换在下次录音时生效，无需重启。</p>
+    <p class="footnote">Phase 1 固定使用本机 Ollama `qwen3:14b`；Ollama 不可用时回退原始转写。</p>
   </div>
 </template>
 
@@ -118,5 +137,6 @@ const fallbackStrategy = ref('whisper')
 .toggle input:checked + .toggle-track { background: #3d885a; }
 .toggle input:checked + .toggle-track::after { transform: translateX(20px); }
 .select { padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(92, 54, 28, 0.1); background: rgba(255, 255, 255, 0.9); font: inherit; font-size: 13px; color: rgba(38, 24, 16, 0.82); cursor: pointer; }
+.key-badge { padding: 8px 12px; border-radius: 10px; font-size: 12px; font-weight: 600; color: rgba(38, 24, 16, 0.82); background: rgba(250, 245, 238, 0.9); border: 1px solid rgba(92, 54, 28, 0.1); white-space: nowrap; }
 .footnote { margin: 0; font-size: 12px; color: rgba(84, 62, 49, 0.5); }
 </style>
