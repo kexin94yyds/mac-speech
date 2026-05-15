@@ -439,10 +439,12 @@ export function useSpeechOverlay() {
 
   async function startListening(
     source: 'shortcut' | 'button',
-    opts?: { skipTargetCapture?: boolean },
+    opts?: { skipTargetCapture?: boolean; modeId?: string | null },
   ) {
+    const nextMode = resolveSpeechMode(opts?.modeId || activeModeId.value)
+    activeModeId.value = nextMode.id
     await debugLog(
-      `startListening source=${source} phase=${sessionPhase.value} skipTargetCapture=${Boolean(opts?.skipTargetCapture)}`,
+      `startListening source=${source} mode=${nextMode.id} phase=${sessionPhase.value} skipTargetCapture=${Boolean(opts?.skipTargetCapture)}`,
     )
     transcript.value = ''
     partialTranscript.value = ''
@@ -466,8 +468,8 @@ export function useSpeechOverlay() {
       sessionPhase.value = 'starting'
       statusMessage.value =
         source === 'shortcut'
-          ? 'Fn 已触发，正在连接原生语音识别。'
-          : '正在连接原生语音识别。'
+          ? `${nextMode.shortcut} 已触发「${nextMode.name}」，正在连接原生语音识别。`
+          : `正在连接原生语音识别，当前模式为「${nextMode.name}」。`
       startFallbackTimer = window.setTimeout(async () => {
         if (sessionPhase.value !== 'starting' || partialTranscript.value || transcript.value) {
           return
