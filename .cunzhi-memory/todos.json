@@ -2,25 +2,25 @@
   {
     "id": "speed-001",
     "subject": "macOS native speech contextualStrings + addsPunctuation",
-    "status": "in_progress",
+    "status": "done",
     "priority": "high"
   },
   {
     "id": "speed-002",
     "subject": "short text fast path before Ollama",
-    "status": "pending",
+    "status": "done",
     "priority": "high"
   },
   {
     "id": "speed-003",
     "subject": "log Ollama raw duration metrics",
-    "status": "pending",
+    "status": "done",
     "priority": "medium"
   },
   {
     "id": "speed-004",
     "subject": "build, install, and validate iterate-speech speed changes",
-    "status": "pending",
+    "status": "done",
     "priority": "high"
   }
 ]
