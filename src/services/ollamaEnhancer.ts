@@ -2,8 +2,10 @@ import type { SpeechMode } from '../config/speechModes'
 
 const OLLAMA_BASE_URL = 'http://localhost:11434'
 
-interface OllamaGenerateResponse {
-  response?: string
+interface OllamaChatResponse {
+  message?: {
+    content?: string
+  }
   error?: string
 }
 
@@ -71,17 +73,24 @@ export async function enhanceTranscript(input: EnhanceTranscriptInput) {
   const timeout = window.setTimeout(() => controller.abort(), input.mode.enhancementTimeoutMs)
 
   try {
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         model: input.mode.ollamaModel,
-        prompt: buildPrompt(input),
+        messages: [
+          {
+            role: 'user',
+            content: buildPrompt(input),
+          },
+        ],
         stream: false,
+        think: false,
         options: {
           temperature: 0.15,
+          num_predict: input.mode.id === 'structure' ? 2048 : 384,
         },
       }),
       signal: controller.signal,
@@ -91,12 +100,12 @@ export async function enhanceTranscript(input: EnhanceTranscriptInput) {
       throw new Error(`Ollama returned HTTP ${response.status}`)
     }
 
-    const payload = await response.json() as OllamaGenerateResponse
+    const payload = await response.json() as OllamaChatResponse
     if (payload.error) {
       throw new Error(payload.error)
     }
 
-    const enhanced = stripModelNoise(payload.response || '')
+    const enhanced = stripModelNoise(payload.message?.content || '')
     if (!enhanced) {
       throw new Error('Ollama returned empty text')
     }
