@@ -902,7 +902,7 @@ impl Default for GeneralSettings {
             launch_at_login: false,
             show_in_menu_bar: true,
             show_in_dock: true,
-            hotkey: "Fn".into(),
+            hotkey: "Fn / Ctrl+1 / Ctrl+2".into(),
             menu_bar_action: "toggle".into(),
         }
     }
