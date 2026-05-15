@@ -194,7 +194,7 @@ export function useSpeechOverlay() {
     if (lastCommittedText.value) {
       return lastCommittedText.value
     }
-    // 避免「正在监听」却仍显示「按 Fn 开始」，让人误以为只有菜单栏出现麦克风图标时才算在听。
+    // 避免「正在监听」却仍显示待命文案，让人误以为只有菜单栏出现麦克风图标时才算在听。
     if (sessionPhase.value === 'starting') {
       return '正在连接麦克风与语音识别…'
     }
@@ -758,7 +758,7 @@ export function useSpeechOverlay() {
       try {
         await invoke('stop_native_speech')
       } catch {
-        // Best-effort: align native bridge with error state so the next Fn can cold-start cleanly.
+        // Best-effort: align native bridge with error state so the next shortcut can cold-start cleanly.
       }
     })
   }
