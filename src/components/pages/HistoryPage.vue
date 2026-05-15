@@ -72,7 +72,7 @@ onBeforeUnmount(() => {
       <h3 class="card-title">最近转写 <span class="count">{{ items.length }} 条</span></h3>
 
       <div v-if="loading" class="empty">正在加载…</div>
-      <div v-else-if="items.length === 0" class="empty">暂无转写记录。按 Fn 开始第一次语音输入。</div>
+      <div v-else-if="items.length === 0" class="empty">暂无转写记录。按 Fn / Ctrl+1 / Ctrl+2 开始第一次语音输入。</div>
 
       <div
         v-for="item in items"
