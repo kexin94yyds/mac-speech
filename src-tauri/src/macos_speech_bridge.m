@@ -162,9 +162,12 @@ typedef void (*SpeechBridgeCallback)(const char *event_type, const char *text, v
     [self emitEvent:@"started" text:recognitionMode];
 }
 
-- (void)startWithCallback:(SpeechBridgeCallback)callback userData:(void *)userData {
+- (void)startWithCallback:(SpeechBridgeCallback)callback
+                 userData:(void *)userData
+        contextualStrings:(NSArray<NSString *> *)contextualStrings {
     self.callback = callback;
     self.userData = userData;
+    self.contextualStrings = contextualStrings ?: @[];
 
     // If the previous session did not fully unwind (e.g. rapid Fn cycles), reset before
     // re-entering the async authorization chain so the next beginRecognition is clean.
