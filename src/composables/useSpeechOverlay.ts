@@ -104,7 +104,10 @@ export function useSpeechOverlay() {
 
     statusMessage.value = `正在用 ${mode.ollamaModel} 处理「${mode.name}」。`
     pushDiagnostic(`开始 ${mode.name}：${trimmed.slice(0, 40)}`)
-    await debugLog(`enhance start mode=${mode.id} len=${trimmed.length}`)
+    const startedAt = performance.now()
+    await debugLog(
+      `enhance start mode=${mode.id} model=${mode.ollamaModel} endpoint=/api/chat think=false len=${trimmed.length}`,
+    )
 
     try {
       const dictionaryEntries = await loadDictionaryEntriesBestEffort()
@@ -113,13 +116,15 @@ export function useSpeechOverlay() {
         mode,
         dictionaryEntries,
       })
-      await debugLog(`enhance ok mode=${mode.id} len=${enhancedText.length}`)
+      const elapsedMs = Math.round(performance.now() - startedAt)
+      await debugLog(`enhance ok mode=${mode.id} model=${mode.ollamaModel} elapsed_ms=${elapsedMs} len=${enhancedText.length}`)
       return { text: enhancedText.trim() || trimmed, enhanced: true }
     } catch (error) {
+      const elapsedMs = Math.round(performance.now() - startedAt)
       const message = `Ollama 增强失败，已回退原始转写：${String(error)}`
       statusMessage.value = message
       pushDiagnostic(message)
-      await debugLog(`enhance failed mode=${mode.id} error=${String(error)}`)
+      await debugLog(`enhance failed mode=${mode.id} model=${mode.ollamaModel} elapsed_ms=${elapsedMs} error=${String(error)}`)
       return { text: trimmed, enhanced: false }
     }
   }
