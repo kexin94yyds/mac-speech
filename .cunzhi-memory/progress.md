@@ -16,5 +16,6 @@
 - 长段速度：`qwen3:14b` warm 长段测试仍约 `21s~24s`，瓶颈在生成阶段；`qwen3:4b` 会把 thinking 内容当正文输出，已判定不适合作为写回模型。已拉取并切换默认模型到非 thinking 的 `qwen2.5:7b`，同段 warm 测试约 `5.6s~9.1s`。Release 包已覆盖 `/Applications/iterate-speech.app`，旧版备份在 `/Applications/iterate-speech.app.backup-20260516-080924`，安装二进制 hash 为 `89469cce722c8346a75562bd27a660cdfd65615266b2dfaa5823428b0180c4be`。
 - 磁盘维护：确认运行时不再依赖 `qwen3:14b` 后，已从 Ollama 删除该模型，仅保留 `qwen2.5:7b`；`.ollama` 从约 `13G` 降到 `4.4G`，启动盘可用从约 `16-17G` 提升到约 `23-24G`。应用 UI 中旧的 `qwen3:14b` 文案已同步为 `qwen2.5:7b`，Release 包已覆盖 `/Applications/iterate-speech.app`，旧版备份在 `/Applications/iterate-speech.app.backup-20260516-102333`，安装二进制 hash 为 `5e90aea8105a1b2963c79eb23280f12e1177cec75454f62e834f831ef95918d8`。
 - iOS Native：`ContentView.swift` / `NativeMainPageView.swift` 已补只读远端同步路径；启动、回前台、打开肌肉记忆库、录音前都会尝试从 Mac bridge 拉取并合并。
-- iOS 验证：`generic/platform=iOS Simulator` build 成功；device build 仍受 Xcode/CoreSimulator runtime 注册问题影响，详见 `P-2026-1417`。
-- 尚未完成：iOS 真机/模拟器中实际说 `派发` 并输出 `pai`；iOS 本地训练双向写回 Mac；桌面原生 ASR contextual hints；完整 Typeless-like 系统级输入。
+- iOS 验证：`generic/platform=iOS Simulator` build 成功；2026-05-16 创建 `IterateNotify Test iPhone` 模拟器并安装启动 `com.iterate.notify` 后，stdout 出现 `[SpeechMemory] synced remote entries reason=app_appear remote=5 merged=4`，模拟器 App 容器 `UserDefaults` 的 `speech_muscle_memory_store` 已写入 `审查 -> cha`、`撤回 -> che`、`派发 -> pai`、`回 -> hui`，说明 iOS Native 从 Mac bridge 拉取共享肌肉记忆并合并到本地 AppStorage 已在模拟器启动链路验收通过。
+- iOS 环境问题：新建 iOS 26.5 模拟器的 `xcrun simctl bootstatus -b` 会长期卡在 `CoreLocationMigrator` 数据迁移阶段，但设备实际已进入 `Booted`，安装与启动 App 可继续；已记录到 `P-2026-1429`。
+- 尚未完成：iOS 真机/模拟器中实际开麦说 `派发` 并输出 `pai`；iOS 本地训练双向写回 Mac；真机设备安装/运行验收；完整 Typeless-like 系统级输入。
