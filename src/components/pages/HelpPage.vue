@@ -43,7 +43,7 @@
       <div class="divider" />
       <div class="help-item">
         <p class="help-q">停止后一直在处理？</p>
-        <p class="help-a">双模增强依赖本机 Ollama 和 qwen3:14b。确认 Ollama 已启动，并且模型已下载；不可用时会回退原始转写。</p>
+        <p class="help-a">双模增强依赖本机 Ollama 和 qwen2.5:7b。确认 Ollama 已启动，并且模型已下载；不可用时会回退原始转写。</p>
       </div>
     </section>
 

@@ -127,7 +127,7 @@ watch([launchAtLogin, showInMenuBar, showInDock, hotkey, menuBarAction, shortFas
       <div class="setting-row">
         <div>
           <p class="setting-label">短句快通道</p>
-          <p class="setting-desc">短命令和短消息直接写回，跳过 qwen3:14b；长文本仍使用智能整理。</p>
+          <p class="setting-desc">短命令和短消息直接写回，跳过 Ollama；长文本仍使用智能整理。</p>
         </div>
         <label class="toggle">
           <input v-model="shortFastPathEnabled" type="checkbox">

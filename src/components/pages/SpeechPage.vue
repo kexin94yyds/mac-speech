@@ -67,7 +67,7 @@ const fallbackStrategy = ref('whisper')
           <p class="setting-label">Ctrl+1 / Fn：中文润色</p>
           <p class="setting-desc">短句日常输入，删除口头禅、补标点、修正中英混排空格。</p>
         </div>
-        <div class="key-badge">qwen3:14b</div>
+        <div class="key-badge">qwen2.5:7b</div>
       </div>
       <div class="divider" />
       <div class="setting-row">
@@ -116,7 +116,7 @@ const fallbackStrategy = ref('whisper')
       </div>
     </section>
 
-    <p class="footnote">Phase 1 固定使用本机 Ollama `qwen3:14b`；Ollama 不可用时回退原始转写。</p>
+    <p class="footnote">Phase 1 固定使用本机 Ollama `qwen2.5:7b`；Ollama 不可用时回退原始转写。</p>
   </div>
 </template>
 
