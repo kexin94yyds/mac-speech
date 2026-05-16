@@ -13,6 +13,7 @@
 - 用户已验证短句明显更快；debug log 中多次出现 `short fast path match`，快通道耗时约 `17ms~24ms`（不含系统写回/粘贴动作）。
 - 浮层取消修复：长句进入 Ollama/finalize 期间再次按快捷键会立即取消并隐藏浮层，后台返回结果会丢弃；从 listening 停止时默认等待 final 并提交，避免 partial 未到时 final 只停留在浮层。Release 包已覆盖 `/Applications/iterate-speech.app`，旧版备份在 `/Applications/iterate-speech.app.backup-20260516-072325`，安装二进制 hash 为 `47fc39204b33b382b3578467b0d60230af6854f340dff9b7788be8eb2657d346`。
 - 结构化模式：`Fn/Ctrl+1` 已拆为 `polish` 润色模式，`Ctrl+2` 已拆为 `structure` 强制结构化模式；两者使用更短 prompt，短句快通道只在 `polish` 生效，避免 Ctrl+2 被跳过。Release 包已覆盖 `/Applications/iterate-speech.app`，旧版备份在 `/Applications/iterate-speech.app.backup-20260516-073115`，安装二进制 hash 为 `cfd2f58b54475e5ee2bfa6e7f85db4c8b899240a942dbf20aa24d2cb97c55f16`。
+- 长段速度：`qwen3:14b` warm 长段测试仍约 `21s~24s`，瓶颈在生成阶段；`qwen3:4b` 会把 thinking 内容当正文输出，已判定不适合作为写回模型。已拉取并切换默认模型到非 thinking 的 `qwen2.5:7b`，同段 warm 测试约 `5.6s~9.1s`。Release 包已覆盖 `/Applications/iterate-speech.app`，旧版备份在 `/Applications/iterate-speech.app.backup-20260516-080924`，安装二进制 hash 为 `89469cce722c8346a75562bd27a660cdfd65615266b2dfaa5823428b0180c4be`。
 - iOS Native：`ContentView.swift` / `NativeMainPageView.swift` 已补只读远端同步路径；启动、回前台、打开肌肉记忆库、录音前都会尝试从 Mac bridge 拉取并合并。
 - iOS 验证：`generic/platform=iOS Simulator` build 成功；device build 仍受 Xcode/CoreSimulator runtime 注册问题影响，详见 `P-2026-1417`。
 - 尚未完成：iOS 真机/模拟器中实际说 `派发` 并输出 `pai`；iOS 本地训练双向写回 Mac；桌面原生 ASR contextual hints；完整 Typeless-like 系统级输入。
